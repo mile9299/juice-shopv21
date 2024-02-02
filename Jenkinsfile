@@ -2,7 +2,7 @@ pipeline {
     agent any
     
     environment {
-        JUICE_SHOP_REPO = 'https://github.com/bkimminich/juice-shop.git'
+        JUICE_SHOP_REPO = 'https://github.com/mile9299/juice-shopv21.git'
         NODEJS_VERSION = '14' // Adjust the Node.js version as needed
     }
     
@@ -10,7 +10,6 @@ pipeline {
         stage('Install Node.js') {
             steps {
                 script {
-                    // Install Node.js
                     def nodejsTool = tool name: "NodeJS ${NODEJS_VERSION}", type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
                     env.PATH = "${nodejsTool}/bin:${env.PATH}"
                 }
@@ -20,5 +19,42 @@ pipeline {
         stage('Checkout') {
             steps {
                 script {
-                    // Checkout the Juice Shop repository
-                    checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: 
+                    checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[url: JUICE_SHOP_REPO]]])
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                script {
+                    sh 'npm install'
+                    sh 'npm run build'
+                }
+            }
+        }
+
+        stage('Test with Snyk') {
+            steps {
+                snykSecurity failOnError: false, snykInstallation: 'snyk@latest', snykTokenId: 'SNYK'
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                script {
+                    sh 'docker build -t juice-shop .'
+                    sh 'docker run -p 3000:3000 -d juice-shop'
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Build, test, and deployment successful!'
+        }
+        failure {
+            echo 'Build, test, or deployment failed!'
+        }
+    }
+}
