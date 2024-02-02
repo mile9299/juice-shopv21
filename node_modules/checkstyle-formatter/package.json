@@ -1,0 +1,47 @@
+{
+  "name": "checkstyle-formatter",
+  "version": "1.1.0",
+  "description": "Simple Checkstyle data formatter",
+  "main": "index.js",
+  "files": [
+    "index.js"
+  ],
+  "scripts": {
+    "coveralls": "coveralls < coverage/lcov.info",
+    "lint": "standard",
+    "pretest": "npm run lint",
+    "test": "nyc tape test/*.js"
+  },
+  "nyc": {
+    "reporter": [
+      "lcov",
+      "text-summary"
+    ],
+    "cache": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jimf/checkstyle-formatter"
+  },
+  "keywords": [
+    "checkstyle",
+    "lint",
+    "format",
+    "formatter"
+  ],
+  "author": "Jim Fitzpatrick",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jimf/checkstyle-formatter/issues"
+  },
+  "homepage": "https://github.com/jimf/checkstyle-formatter",
+  "dependencies": {
+    "xml-escape": "^1.0.0"
+  },
+  "devDependencies": {
+    "coveralls": "^2.11.2",
+    "nyc": "^11.1.0",
+    "standard": "^10.0.3",
+    "tape": "^4.0.0"
+  }
+}
