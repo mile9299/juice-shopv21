@@ -31,7 +31,7 @@ pipeline {
                     sh 'npm install'
 
                     // Start the application in the background
-                    sh 'nohup npm start > /dev/null 2>&1 &'
+                    sh 'npm start &'
                 }
             }
         }
