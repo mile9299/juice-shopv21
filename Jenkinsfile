@@ -9,8 +9,9 @@ pipeline {
         stage('Install Node.js') {
             steps {
                 script {
-                    def nodejsTool = tool name: "NodeJS", type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
+                    def nodejsTool = tool name: 'NodeJS', type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
                     env.PATH = "${nodejsTool}/bin:${env.PATH}"
+                    env.NODEJS_HOME = "${nodejsTool}"
                 }
             }
         }
@@ -27,6 +28,7 @@ pipeline {
             steps {
                 script {
                     sh 'npm cache clean -f'
+                    sh 'npm install -g npm@latest' // Update npm
                     sh 'npm install --legacy-peer-deps'
                     sh 'npm run build'
                 }
