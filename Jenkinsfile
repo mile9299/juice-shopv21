@@ -33,7 +33,7 @@ pipeline {
                     sh 'nohup npm start > /dev/null 2>&1 &'
 
                     // Sleep for a few seconds to ensure the application has started before moving to the next stage
-                    sleep(time: 10, unit: 'SECONDS')
+                    sleep(time: 5, unit: 'SECONDS')
                 }
             }
         }
