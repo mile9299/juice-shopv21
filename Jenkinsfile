@@ -3,19 +3,13 @@ pipeline {
     
     environment {
         JUICE_SHOP_REPO = 'https://github.com/bkimminich/juice-shop.git'
-        NODEJS_HOME = tool name: 'NodeJS', type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
-        PATH = "${NODEJS_HOME}/bin:${env.PATH}"
+    }
+
+    tools {
+        nodejs 'NodeJS' // Assuming 'NodeJS' is the name of the NodeJS tool installation
     }
     
     stages {
-        stage('Install Node.js') {
-            steps {
-                script {
-                    // No need to explicitly check for NodeJS tool now
-                }
-            }
-        }
-
         stage('Checkout') {
             steps {
                 script {
@@ -45,8 +39,10 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
+                    sh 'docker stop juice-shop || true' // Stop and remove the container if it exists
+                    sh 'docker rm juice-shop || true'
                     sh 'docker build -t juice-shop .'
-                    sh 'docker run -p 3000:3000 -d juice-shop'
+                    sh 'docker run -p 3000:3000 -d --name juice-shop juice-shop'
                 }
             }
         }
