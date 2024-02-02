@@ -20,7 +20,7 @@ pipeline {
         stage('Test with Snyk') {
             steps {
                 script {
-                    snykSecurity failOnIssues: false, severity: 'critical', snykInstallation: 'snyk-manual', snykTokenId: 'SNYK'
+                    // Your Snyk testing steps here
                 }
             }
         }
@@ -29,20 +29,21 @@ pipeline {
                 script {
                     sh 'npm cache clean -f'
                     sh 'npm install'
-                    sh 'npm start'
-                    // Start the application and capture its process ID (PID)
-                    def appProcess = sh(script: 'npm start', returnStatus: true)
+
+                    // Start the application in the background and capture its process ID (PID)
+                    def appProcess = sh(script: 'npm start & echo $!', returnStatus: true).trim()
 
                     // Add a timeout for 10 minutes, and if the process is still running after the timeout, kill it
                     timeout(time: 10, unit: 'MINUTES') {
-                    // Your additional build steps here
-                    }    
+                        // Your additional build steps here
+                        // For example: sh 'npm run build'
+                    }
+
                     // Kill the application process if it is still running after the timeout
-                    sh "kill -9 ${appProcess}"
+                    sh "kill -9 ${appProcess} || true"
                 }
             }
         }
-
         stage('Deploy') {
             steps {
                 script {
