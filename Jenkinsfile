@@ -29,12 +29,11 @@ pipeline {
                 script {
                     sh 'npm cache clean -f'
                     sh 'npm install'
-                // Start the application in the background using nohup
+                    // Start the application in the background using nohup
                     sh 'nohup npm start > /dev/null 2>&1 &'
 
-                // Sleep for a few seconds to ensure the application has started before moving to the next stage
+                    // Sleep for a few seconds to ensure the application has started before moving to the next stage
                     sleep(time: 10, unit: 'SECONDS')
-                    }
                 }
             }
         }
