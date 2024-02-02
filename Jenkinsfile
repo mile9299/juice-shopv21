@@ -30,8 +30,13 @@ pipeline {
                     sh 'npm cache clean -f'
                     sh 'npm install'
 
-                    // Start the application in the background
-                    sh 'npm start & disown'
+                // Start the application in the background using daemon
+                def process = daemon {
+                sh 'npm start'
+                }
+
+            // Wait for the process to finish
+            process.join()
                 }
             }
         }
