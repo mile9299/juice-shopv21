@@ -29,14 +29,9 @@ pipeline {
                 script {
                     sh 'npm cache clean -f'
                     sh 'npm install'
-
-                // Start the application in the background using daemon
-                def process = daemon {
-                sh 'npm start'
-                }
-
-            // Wait for the process to finish
-            process.join()
+                    sh 'nohup npm start > /dev/null 2>&1 &'
+            // Sleep to ensure the application has started
+                    sleep(10)
                 }
             }
         }
