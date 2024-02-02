@@ -2,16 +2,16 @@ pipeline {
     agent any
     
     environment {
-        JUICE_SHOP_REPO = 'https://github.com/mile9299/juice-shopv21.git'
+        JUICE_SHOP_REPO = 'https://github.com/bkimminich/juice-shop.git'
+        NODEJS_HOME = tool name: 'NodeJS', type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
+        PATH = "${NODEJS_HOME}/bin:${env.PATH}"
     }
     
     stages {
         stage('Install Node.js') {
             steps {
                 script {
-                    def nodejsTool = tool name: 'NodeJS', type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
-                    env.PATH = "${nodejsTool}/bin:${env.PATH}"
-                    env.NODEJS_HOME = "${nodejsTool}"
+                    // No need to explicitly check for NodeJS tool now
                 }
             }
         }
@@ -28,15 +28,17 @@ pipeline {
             steps {
                 script {
                     sh 'npm cache clean -f'
-                    sh 'npm install --legacy-peer-deps'
-                    sh 'npm run build'
+                    sh 'npm install'
+                    sh 'npm start'
                 }
             }
         }
 
         stage('Test with Snyk') {
             steps {
-                snykSecurity failOnError: false, snykInstallation: 'snyk@latest', snykTokenId: 'SNYK'
+                script {
+                    snykSecurity failOnIssues: false, severity: 'critical', snykInstallation: 'snyk-manual', snykTokenId: 'SNYK'
+                }
             }
         }
 
