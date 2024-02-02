@@ -2,7 +2,7 @@ pipeline {
     agent any
     
     environment {
-        JUICE_SHOP_REPO = 'https://github.com/bkimminich/juice-shop.git'
+        JUICE_SHOP_REPO = 'https://github.com/mile9299/juice-shopv21.git'
     }
 
     tools {
@@ -31,7 +31,7 @@ pipeline {
                     sh 'npm install'
 
                     // Start the application in the background and capture its process ID (PID)
-                    def appProcess = sh(script: 'npm start & echo $!', returnStatus: true).trim()
+                    def appProcess = sh(script: 'npm start & echo \$!', returnStatus: true).trim()
 
                     // Add a timeout for 10 minutes, and if the process is still running after the timeout, kill it
                     timeout(time: 10, unit: 'MINUTES') {
