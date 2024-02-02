@@ -30,6 +30,15 @@ pipeline {
                     sh 'npm cache clean -f'
                     sh 'npm install'
                     sh 'npm start'
+                    // Start the application and capture its process ID (PID)
+                    def appProcess = sh(script: 'npm start', returnStatus: true)
+
+                    // Add a timeout for 10 minutes, and if the process is still running after the timeout, kill it
+                    timeout(time: 10, unit: 'MINUTES') {
+                    // Your additional build steps here
+                    }    
+                    // Kill the application process if it is still running after the timeout
+                    sh "kill -9 ${appProcess}"
                 }
             }
         }
