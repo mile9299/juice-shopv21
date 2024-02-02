@@ -29,7 +29,6 @@ pipeline {
                     sh 'npm cache clean -f'
                     sh 'npm install'
                     sh 'npm start &'
-                    sh 'disown'
                 }
             }
         }
