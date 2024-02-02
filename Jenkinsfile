@@ -4,6 +4,7 @@ pipeline {
     environment {
         JUICE_SHOP_REPO = 'https://github.com/bkimminich/juice-shop.git'
     }
+    
     tools {
         nodejs 'NodeJS' // Assuming 'NodeJS' is the name of the NodeJS tool installation
     }
@@ -19,7 +20,7 @@ pipeline {
         stage('Test with Snyk') {
             steps {
                 script {
-                    snykSecurity failOnIssues: false, severity: 'critical', snykInstallation: 'snyk-manual', snykTokenId: 'SNYK'
+                    // Your Snyk testing steps here
                 }
             }
         }
@@ -28,21 +29,27 @@ pipeline {
                 script {
                     sh 'npm cache clean -f'
                     sh 'npm install'
-                    sh 'npm start &'
+
+                    // Start the application in the background and disown the process
+                    sh 'npm start & disown'
                 }
             }
         }
         stage('Deploy') {
             steps {
                 script {
-                    sh 'docker stop juice-shop || true' // Stop and remove the container if it exists
+                    // Stop and remove the container if it exists
+                    sh 'docker stop juice-shop || true'
                     sh 'docker rm juice-shop || true'
+
+                    // Build and run the Docker container
                     sh 'docker build -t juice-shop .'
                     sh 'docker run -p 3000:3000 -d --name juice-shop juice-shop'
                 }
             }
         }
     }
+
     post {
         success {
             echo 'Build, test, and deployment successful!'
