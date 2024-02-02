@@ -28,7 +28,6 @@ pipeline {
             steps {
                 script {
                     sh 'npm cache clean -f'
-                    sh 'npm install -g npm@latest' // Update npm
                     sh 'npm install --legacy-peer-deps'
                     sh 'npm run build'
                 }
