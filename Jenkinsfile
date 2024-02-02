@@ -20,7 +20,7 @@ pipeline {
         stage('Test with Snyk') {
             steps {
                 script {
-                    // Your Snyk testing steps here
+                     snykSecurity failOnIssues: false, severity: 'critical', snykInstallation: 'snyk-manual', snykTokenId: 'SNYK'
                 }
             }
         }
