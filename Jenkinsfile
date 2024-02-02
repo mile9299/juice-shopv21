@@ -31,7 +31,7 @@ pipeline {
                     sh 'npm install'
 
                     // Start the application in the background and disown the process
-                    sh 'npm start & disown'
+                    sh 'npm start & disown || :'
                 }
             }
         }
