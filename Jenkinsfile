@@ -30,8 +30,8 @@ pipeline {
                     sh 'npm cache clean -f'
                     sh 'npm install'
 
-                    // Start the application in the background and disown the process
-                    sh 'npm start & disown || :'
+                    // Start the application in the background
+                    sh 'nohup npm start > /dev/null 2>&1 &'
                 }
             }
         }
