@@ -3,10 +3,11 @@ pipeline {
     
     environment {
         JUICE_SHOP_REPO = 'https://github.com/bkimminich/juice-shop.git'
+        DOCKER_PORT = 3000 // Default Docker port
     }
     
     tools {
-        nodejs 'NodeJS' // Assuming 'NodeJS' is the name of the NodeJS tool installation
+        nodejs 'NodeJS'
     }
     
     stages {
@@ -20,7 +21,7 @@ pipeline {
         stage('Test with Snyk') {
             steps {
                 script {
-                     snykSecurity failOnIssues: false, severity: 'critical', snykInstallation: 'snyk-manual', snykTokenId: 'SNYK'
+                    snykSecurity failOnIssues: false, severity: 'critical', snykInstallation: 'snyk-manual', snykTokenId: 'SNYK'
                 }
             }
         }
@@ -44,9 +45,12 @@ pipeline {
                     sh 'docker stop juice-shop || true'
                     sh 'docker rm juice-shop || true'
 
-                    // Build and run the Docker container
-                    sh 'docker build -t juice-shop .'
-                    sh 'docker run -p 3000:3000 -d --name juice-shop juice-shop'
+                    // Build and run the Docker container with a dynamically allocated port
+                    sh "docker build -t juice-shop ."
+                    sh "DOCKER_PORT=$(docker run -d -P --name juice-shop juice-shop)"
+                    sh "DOCKER_HOST_PORT=$(docker port $DOCKER_PORT 3000 | cut -d ':' -f 2)"
+
+                    echo "Juice Shop is running on http://localhost:$DOCKER_HOST_PORT"
                 }
             }
         }
