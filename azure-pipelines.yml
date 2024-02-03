@@ -25,9 +25,9 @@ variables:
   k8sNamespaceForPR: 'review-app-$(System.PullRequest.PullRequestId)'
 
 stages:
-- stage: 'Snyk Scan'
+- stage: 'SnykScan'
   jobs:
-  - job: 'SnykScan'
+  - job: 'SnykScanJob'
     displayName: 'Snyk Scan'
     pool:
       vmImage: $(vmImageName)
