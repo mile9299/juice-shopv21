@@ -47,10 +47,10 @@ pipeline {
 
                     // Build and run the Docker container with a dynamically allocated port
                     sh "docker build -t juice-shop ."
-                    sh "DOCKER_PORT=$(docker run -d -P --name juice-shop juice-shop)"
-                    sh "DOCKER_HOST_PORT=$(docker port $DOCKER_PORT 3000 | cut -d ':' -f 2)"
+                    sh "DOCKER_PORT=\$(docker run -d -P --name juice-shop juice-shop)"
+                    sh "DOCKER_HOST_PORT=\$(docker port $DOCKER_PORT 3000 | cut -d ':' -f 2)"
 
-                    echo "Juice Shop is running on http://localhost:$DOCKER_HOST_PORT"
+                    echo "Juice Shop is running on http://localhost:\$DOCKER_HOST_PORT"
                 }
             }
         }
