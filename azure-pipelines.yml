@@ -25,51 +25,61 @@ variables:
   k8sNamespaceForPR: 'review-app-$(System.PullRequest.PullRequestId)'
 
 stages:
-- stage:Snyk Scan
-- task: SnykSecurityScan@1
-  inputs:
-    serviceConnectionEndpoint: 'f4835c65-42f8-40c8-a803-98d2f51b7eba'
-    testType: 'app'
-    severityThreshold: 'medium'
-    failOnIssues: true
-    failOnThreshold: 'critical'
-    monitorWhen: 'always'
-- task: SnykSecurityScan@1
-  inputs:
-    serviceConnectionEndpoint: 'f4835c65-42f8-40c8-a803-98d2f51b7eba'
-    testType: 'code'
-    codeSeverityThreshold: 'medium'
-    failOnThreshold: 'high'
-    failOnIssues: true
-- stage: Build
-  displayName: Build stage
+- stage: 'Snyk Scan'
   jobs:
-  - job: Build
-    displayName: Build
+  - job: 'SnykScan'
+    displayName: 'Snyk Scan'
+    pool:
+      vmImage: $(vmImageName)
+    steps:
+    - task: SnykSecurityScan@1
+      inputs:
+        serviceConnectionEndpoint: 'f4835c65-42f8-40c8-a803-98d2f51b7eba'
+        testType: 'app'
+        severityThreshold: 'medium'
+        failOnIssues: true
+        failOnThreshold: 'critical'
+        monitorWhen: 'always'
+    - task: SnykSecurityScan@1
+      inputs:
+        serviceConnectionEndpoint: 'f4835c65-42f8-40c8-a803-98d2f51b7eba'
+        testType: 'code'
+        codeSeverityThreshold: 'medium'
+        failOnThreshold: 'high'
+        failOnIssues: true
+
+- stage: 'Build'
+  displayName: 'Build stage'
+  jobs:
+  - job: 'Build'
+    displayName: 'Build'
     pool:
       vmImage: $(vmImageName)
     steps:
     - task: Docker@2
-      displayName: Build and push an image to container registry
+      displayName: 'Build and push an image to container registry'
       inputs:
-        command: buildAndPush
+        command: 'buildAndPush'
         repository: $(imageRepository)
         dockerfile: $(dockerfilePath)
         containerRegistry: $(dockerRegistryServiceConnection)
         tags: |
           $(tag)
 
-    - upload: manifests
-      artifact: manifests
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish manifests artifact'
+      inputs:
+        targetPath: '$(Pipeline.Workspace)/manifests'
+        artifact: 'manifests'
 
-- stage: Deploy
-  displayName: Deploy stage
-  dependsOn: Build
+- stage: 'Deploy'
+  displayName: 'Deploy stage'
+  dependsOn: 'Build'
 
   jobs:
-  - deployment: Deploy
+  - deployment: 'Deploy'
     condition: and(succeeded(), not(startsWith(variables['Build.SourceBranch'], 'refs/pull/')))
-    displayName: Deploy
+    displayName: 'Deploy'
     pool:
       vmImage: $(vmImageName)
     environment: 'mile9299juiceshopv21-1050.apps'
@@ -78,16 +88,16 @@ stages:
         deploy:
           steps:
           - task: KubernetesManifest@0
-            displayName: Create imagePullSecret
+            displayName: 'Create imagePullSecret'
             inputs:
-              action: createSecret
+              action: 'createSecret'
               secretName: $(imagePullSecret)
               dockerRegistryEndpoint: $(dockerRegistryServiceConnection)
 
           - task: KubernetesManifest@0
-            displayName: Deploy to Kubernetes cluster
+            displayName: 'Deploy to Kubernetes cluster'
             inputs:
-              action: deploy
+              action: 'deploy'
               manifests: |
                 $(Pipeline.Workspace)/manifests/deployment.yml
                 $(Pipeline.Workspace)/manifests/service.yml
@@ -96,8 +106,8 @@ stages:
               containers: |
                 $(containerRegistry)/$(imageRepository):$(tag)
 
-  - deployment: DeployPullRequest
-    displayName: Deploy Pull request
+  - deployment: 'DeployPullRequest'
+    displayName: 'Deploy Pull request'
     condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/pull/'))
     pool:
       vmImage: $(vmImageName)
@@ -107,27 +117,27 @@ stages:
       runOnce:
         deploy:
           steps:
-          - reviewApp: apps
+          - reviewApp: 'apps'
 
           - task: Kubernetes@1
             displayName: 'Create a new namespace for the pull request'
             inputs:
-              command: apply
+              command: 'apply'
               useConfigurationFile: true
               inline: '{ "kind": "Namespace", "apiVersion": "v1", "metadata": { "name": "$(k8sNamespaceForPR)" }}'
 
           - task: KubernetesManifest@0
-            displayName: Create imagePullSecret
+            displayName: 'Create imagePullSecret'
             inputs:
-              action: createSecret
+              action: 'createSecret'
               secretName: $(imagePullSecret)
               namespace: $(k8sNamespaceForPR)
               dockerRegistryEndpoint: $(dockerRegistryServiceConnection)
 
           - task: KubernetesManifest@0
-            displayName: Deploy to the new namespace in the Kubernetes cluster
+            displayName: 'Deploy to the new namespace in the Kubernetes cluster'
             inputs:
-              action: deploy
+              action: 'deploy'
               namespace: $(k8sNamespaceForPR)
               manifests: |
                 $(Pipeline.Workspace)/manifests/deployment.yml
@@ -138,14 +148,14 @@ stages:
                 $(containerRegistry)/$(imageRepository):$(tag)
 
           - task: Kubernetes@1
-            name: get
+            name: 'get'
             displayName: 'Get services in the new namespace'
             continueOnError: true
             inputs:
-              command: get
+              command: 'get'
               namespace: $(k8sNamespaceForPR)
-              arguments: svc
-              outputFormat: jsonpath='http://{.items[0].status.loadBalancer.ingress[0].ip}:{.items[0].spec.ports[0].port}'
+              arguments: 'svc'
+              outputFormat: 'jsonpath=http://{.items[0].status.loadBalancer.ingress[0].ip}:{.items[0].spec.ports[0].port}'
 
           # Getting the IP of the deployed service and writing it to a variable for posing comment
           - script: |
