@@ -25,9 +25,10 @@ jobs:
 
   - script: |
       npm install -g snyk
+      snyk auth f4835c65-42f8-40c8-a803-98d2f51b7eba
       snyk test
     displayName: 'Test with Snyk'
-    snyk auth f4835c65-42f8-40c8-a803-98d2f51b7eba
+    
 - job: Build
   steps:
   - checkout: self
