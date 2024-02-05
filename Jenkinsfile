@@ -9,7 +9,7 @@ pipeline {
     tools {
         nodejs 'NodeJS'
     }
-    
+// Added Comments    
     stages {
         stage('Checkout') {
             steps {
