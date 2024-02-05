@@ -11,62 +11,58 @@ variables:
   JUICE_SHOP_REPO: 'https://github.com/bkimminich/juice-shop.git'
   DOCKER_PORT: 3000
 
-steps:
-- checkout: self
+jobs:
+- job: Test_with_Snyk
+  steps:
+  - checkout: self
 
-- stage: Test_with_Snyk
-  jobs:
-  - job: Test
-    steps:
-    - task: UseDotNet@2
-      inputs:
-        packageType: 'sdk'
-        version: '3.1.x'
-        installationPath: $(Agent.ToolsDirectory)/dotnet
-        installationName: 'DotNetCoreSDK'
+  - task: UseDotNet@2
+    inputs:
+      packageType: 'sdk'
+      version: '3.1.x'
+      installationPath: $(Agent.ToolsDirectory)/dotnet
+      installationName: 'DotNetCoreSDK'
 
-    - script: |
-        npm install -g snyk
-        snyk test
-      displayName: 'Test with Snyk'
+  - script: |
+      npm install -g snyk
+      snyk test
+    displayName: 'Test with Snyk'
 
-- stage: Build
-  jobs:
-  - job: Build
-    steps:
-    - task: NodeTool@0
-      inputs:
-        versionSpec: '10.x'
-      displayName: 'Install Node.js'
+- job: Build
+  steps:
+  - checkout: self
 
-    - script: |
-        npm cache clean -f
-        npm install
-        npm start &
-        sleep 5
-      displayName: 'Build and Start Application'
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '10.x'
+    displayName: 'Install Node.js'
 
-- stage: Deploy
-  jobs:
-  - job: Deploy
-    steps:
-    - script: |
-        docker stop juice-shop || true
-        docker rm juice-shop || true
-        docker build -t juice-shop .
-        export DOCKER_PORT=$(docker run -d -P --name juice-shop juice-shop)
-        export DOCKER_HOST_PORT=$(docker port $DOCKER_PORT 3000 | cut -d ':' -f 2)
-        echo "Juice Shop is running on http://localhost:$DOCKER_HOST_PORT"
-      displayName: 'Deploy to Docker'
+  - script: |
+      npm cache clean -f
+      npm install
+      npm start &
+      sleep 5
+    displayName: 'Build and Start Application'
 
-- stage: Post
-  jobs:
-  - job: Post
-    steps:
-    - script: |
-        echo 'Build, test, and deployment successful!'
-      displayName: 'Post-Success'
+- job: Deploy
+  steps:
+  - checkout: self
 
-    - script: |
-        echo 'Build, test, or deployment failed!'
-      displayName: 'Post-Failure'
+  - script: |
+      docker stop juice-shop || true
+      docker rm juice-shop || true
+      docker build -t juice-shop .
+      export DOCKER_PORT=$(docker run -d -P --name juice-shop juice-shop)
+      export DOCKER_HOST_PORT=$(docker port $DOCKER_PORT 3000 | cut -d ':' -f 2)
+      echo "Juice Shop is running on http://localhost:$DOCKER_HOST_PORT"
+    displayName: 'Deploy to Docker'
+
+- job: Post
+  steps:
+  - script: |
+      echo 'Build, test, and deployment successful!'
+    displayName: 'Post-Success'
+
+  - script: |
+      echo 'Build, test, or deployment failed!'
+    displayName: 'Post-Failure'
