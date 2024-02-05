@@ -1,145 +1,72 @@
-# Deploy to Azure Kubernetes Service
-# Build and push image to Azure Container Registry; Deploy to Azure Kubernetes Service
-# https://docs.microsoft.com/azure/devops/pipelines/languages/docker
-
 trigger:
-- main
+- master
 
-resources:
-- repo: self
+pr:
+- master
+
+pool:
+  vmImage: 'ubuntu-latest'
 
 variables:
+  JUICE_SHOP_REPO: 'https://github.com/bkimminich/juice-shop.git'
+  DOCKER_PORT: 3000
 
-  # Container registry service connection established during pipeline creation
-  dockerRegistryServiceConnection: '7f2d5c6d-9ea1-4e13-9444-842e07b919d3'
-  imageRepository: 'juiceshop'
-  containerRegistry: 'acreg2024.azurecr.io'
-  dockerfilePath: '**/Dockerfile'
-  tag: '$(Build.BuildId)'
-  imagePullSecret: 'acreg20242082e68b-auth'
+steps:
+- checkout: self
 
-  # Agent VM image name
-  vmImageName: 'ubuntu-latest'
-
-  # Name of the new namespace being created to deploy the PR changes.
-  k8sNamespaceForPR: 'review-app-$(System.PullRequest.PullRequestId)'
-
-stages:
-- stage: 'Build'
-  displayName: 'Build stage'
+- stage: Test_with_Snyk
   jobs:
-  - job: 'Build'
-    displayName: 'Build'
-    pool:
-      vmImage: $(vmImageName)
+  - job: Test
     steps:
-    - task: Docker@2
-      displayName: 'Build and push an image to container registry'
+    - task: UseDotNet@2
       inputs:
-        command: 'buildAndPush'
-        repository: $(imageRepository)
-        dockerfile: $(dockerfilePath)
-        containerRegistry: $(dockerRegistryServiceConnection)
-        tags: |
-          $(tag)
+        packageType: 'sdk'
+        version: '3.1.x'
+        installationPath: $(Agent.ToolsDirectory)/dotnet
+        installationName: 'DotNetCoreSDK'
 
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish manifests artifact'
-      inputs:
-        targetPath: '$(Pipeline.Workspace)/manifests'
-        artifact: 'manifests'
+    - script: |
+        npm install -g snyk
+        snyk test
+      displayName: 'Test with Snyk'
 
-- stage: 'Deploy'
-  displayName: 'Deploy stage'
-  dependsOn: 'Build'
-
+- stage: Build
   jobs:
-  - deployment: 'Deploy'
-    condition: and(succeeded(), not(startsWith(variables['Build.SourceBranch'], 'refs/pull/')))
-    displayName: 'Deploy'
-    pool:
-      vmImage: $(vmImageName)
-    environment: 'mile9299juiceshopv21-1050.apps'
-    strategy:
-      runOnce:
-        deploy:
-          steps:
-          - task: KubernetesManifest@0
-            displayName: 'Create imagePullSecret'
-            inputs:
-              action: 'createSecret'
-              secretName: $(imagePullSecret)
-              dockerRegistryEndpoint: $(dockerRegistryServiceConnection)
+  - job: Build
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '10.x'
+      displayName: 'Install Node.js'
 
-          - task: KubernetesManifest@0
-            displayName: 'Deploy to Kubernetes cluster'
-            inputs:
-              action: 'deploy'
-              manifests: |
-                $(Pipeline.Workspace)/manifests/deployment.yml
-                $(Pipeline.Workspace)/manifests/service.yml
-              imagePullSecrets: |
-                $(imagePullSecret)
-              containers: |
-                $(containerRegistry)/$(imageRepository):$(tag)
+    - script: |
+        npm cache clean -f
+        npm install
+        npm start &
+        sleep 5
+      displayName: 'Build and Start Application'
 
-  - deployment: 'DeployPullRequest'
-    displayName: 'Deploy Pull request'
-    condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/pull/'))
-    pool:
-      vmImage: $(vmImageName)
+- stage: Deploy
+  jobs:
+  - job: Deploy
+    steps:
+    - script: |
+        docker stop juice-shop || true
+        docker rm juice-shop || true
+        docker build -t juice-shop .
+        export DOCKER_PORT=$(docker run -d -P --name juice-shop juice-shop)
+        export DOCKER_HOST_PORT=$(docker port $DOCKER_PORT 3000 | cut -d ':' -f 2)
+        echo "Juice Shop is running on http://localhost:$DOCKER_HOST_PORT"
+      displayName: 'Deploy to Docker'
 
-    environment: 'mile9299juiceshopv21-1050.$(k8sNamespaceForPR)'
-    strategy:
-      runOnce:
-        deploy:
-          steps:
-          - reviewApp: 'apps'
+- stage: Post
+  jobs:
+  - job: Post
+    steps:
+    - script: |
+        echo 'Build, test, and deployment successful!'
+      displayName: 'Post-Success'
 
-          - task: Kubernetes@1
-            displayName: 'Create a new namespace for the pull request'
-            inputs:
-              command: 'apply'
-              useConfigurationFile: true
-              inline: '{ "kind": "Namespace", "apiVersion": "v1", "metadata": { "name": "$(k8sNamespaceForPR)" }}'
-
-          - task: KubernetesManifest@0
-            displayName: 'Create imagePullSecret'
-            inputs:
-              action: 'createSecret'
-              secretName: $(imagePullSecret)
-              namespace: $(k8sNamespaceForPR)
-              dockerRegistryEndpoint: $(dockerRegistryServiceConnection)
-
-          - task: KubernetesManifest@0
-            displayName: 'Deploy to the new namespace in the Kubernetes cluster'
-            inputs:
-              action: 'deploy'
-              namespace: $(k8sNamespaceForPR)
-              manifests: |
-                $(Pipeline.Workspace)/manifests/deployment.yml
-                $(Pipeline.Workspace)/manifests/service.yml
-              imagePullSecrets: |
-                $(imagePullSecret)
-              containers: |
-                $(containerRegistry)/$(imageRepository):$(tag)
-
-          - task: Kubernetes@1
-            name: 'get'
-            displayName: 'Get services in the new namespace'
-            continueOnError: true
-            inputs:
-              command: 'get'
-              namespace: $(k8sNamespaceForPR)
-              arguments: 'svc'
-              outputFormat: 'jsonpath=http://{.items[0].status.loadBalancer.ingress[0].ip}:{.items[0].spec.ports[0].port}'
-
-          # Getting the IP of the deployed service and writing it to a variable for posing comment
-          - script: |
-              url="$(get.KubectlOutput)"
-              message="Your review app has been deployed"
-              if [ ! -z "$url" -a "$url" != "http://:" ]
-              then
-                message="${message} and is available at $url.<br><br>[Learn More](https://aka.ms/testwithreviewapps) about how to test and provide feedback for the app."
-              fi
-              echo "##vso[task.setvariable variable=GITHUB_COMMENT]$message"
+    - script: |
+        echo 'Build, test, or deployment failed!'
+      displayName: 'Post-Failure'
