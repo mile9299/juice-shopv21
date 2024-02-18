@@ -65,7 +65,7 @@ jobs:
   - script: $HOME/.spectral/spectral scan --ok --dsn $(SPECTRAL_DSN)  --include-tags base,audit
       displayName:'Spectral Scan'
   - job: Post
-steps:
+  steps:
   - script: |
       echo 'Build, test, and deployment successful!'
     displayName: 'Post-Success'
