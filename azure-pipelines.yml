@@ -28,7 +28,7 @@ jobs:
       snyk auth f4835c65-42f8-40c8-a803-98d2f51b7eba
       snyk test --severity-threshold=low
     displayName: 'Test with Snyk'
-    
+
 - job: Build
   steps:
   - checkout: self
@@ -57,14 +57,21 @@ jobs:
       export DOCKER_HOST_PORT=$(docker port $DOCKER_PORT 3000 | cut -d ':' -f 2)
       echo "Juice Shop is running on http://localhost:$DOCKER_HOST_PORT"
     displayName: 'Deploy to Docker'
+
   - script: |
       git fetch --all
       git switch `basename $(Build.SourceBranch)`
-  - script: curl -L 'https://get.spectralops.io/latest/x/sh?dsn=$(SPECTRAL_DSN)' | sh
-      displayName:'Install Spectral'
-  - script: $HOME/.spectral/spectral scan --ok --dsn $(SPECTRAL_DSN)  --include-tags base,audit
-      displayName:'Spectral Scan'
-  - job: Post
+    displayName: 'Switch Branch'
+
+  - script: |
+      curl -L 'https://get.spectralops.io/latest/x/sh?dsn=$(SPECTRAL_DSN)' | sh
+    displayName: 'Install Spectral'
+
+  - script: |
+      $HOME/.spectral/spectral scan --ok --dsn $(SPECTRAL_DSN) --include-tags base,audit
+    displayName: 'Spectral Scan'
+
+- job: Post
   steps:
   - script: |
       echo 'Build, test, and deployment successful!'
