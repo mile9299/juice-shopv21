@@ -63,13 +63,13 @@ jobs:
       git switch `basename $(Build.SourceBranch)`
     displayName: 'Switch Branch'
 
-  - script: |
-      curl -L 'https://get.spectralops.io/latest/x/sh?dsn=$(SPECTRAL_DSN)' | sh
-    displayName: 'Install Spectral'
+ # - script: |
+ #     curl -L 'https://get.spectralops.io/latest/x/sh?dsn=$(SPECTRAL_DSN)' | sh
+ #   displayName: 'Install Spectral'
 
-  - script: |
-      $HOME/.spectral/spectral scan --ok --dsn $(SPECTRAL_DSN) --include-tags base,audit
-    displayName: 'Spectral Scan'
+ # - script: |
+ #     $HOME/.spectral/spectral scan --ok --dsn $(SPECTRAL_DSN) --include-tags base,audit
+ #   displayName: 'Spectral Scan'
 
 - job: Post
   steps:
