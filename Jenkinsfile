@@ -29,9 +29,9 @@ pipeline {
             }
         }
         stage('FCS IaC Scan Execution') {
-            steps {
-                script {
-                def SCAN_EXIT_CODE = sh(
+    steps {
+        script {
+            def SCAN_EXIT_CODE = sh(
                 script: '''
                     set +x
                     # check if required env vars are set in the build set up
