@@ -2,12 +2,13 @@ pipeline {
     agent any
     
     environment {
-        JUICE_SHOP_REPO = 'https://github.com/bkimminich/juice-shop.git'
+        JUICE_SHOP_REPO = 'https://github.com/mile9299/spooky.git'
         DOCKER_PORT = 3000 // Default Docker port
+        SPECTRAL_DSN = credentials('SPECTRAL_DSN')
     }
-    
+    // Added
     tools {
-        nodejs 'NodeJS'
+        nodejs 'NodeJS 18.0.0'
     }
 // Added
     stages {
