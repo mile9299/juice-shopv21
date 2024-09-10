@@ -12,7 +12,7 @@ pipeline {
         CS_USERNAME = 'fc-58fc9e1dde9946d4976b66844b4b15f6'
         CS_PASSWORD = 'cmVmdGtuOjAxOjAwMDAwMDAwMDA6NDFTZnlnRTNWaE5pTlpsTm1SRGxXaW1Zb2NB'
         FALCON_REGION = 'us-1'
-        PROJECT_PATH = '/var/lib/jenkins/workspace/Spooky Pipeline'
+        PROJECT_PATH = '/var/lib/jenkins/workspace/juice-shopv21'
         CS_REGISTRY = 'registry.crowdstrike.com'
     }
     // Added
