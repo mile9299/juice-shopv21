@@ -26,6 +26,13 @@ pipeline {
                 }
             }
         }
+        stage('Falcon Cloud Security') {
+            steps {
+                withCredentials([usernameColonPassword(credentialsId: 'CRWD', variable: 'FALCON_CREDENTIALS')]) {
+                    crowdStrikeSecurity imageName: 'snyk-example', imageTag: 'latest', enforce: true, timeout: 60
+                }
+            }
+        }
         stage('Build') {
             steps {
                 script {
