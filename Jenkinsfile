@@ -11,8 +11,6 @@ pipeline {
         CS_CLIENT_SECRET = '7IO5uDQ04JbkoeplL1wMCXsnFGS3U6cf2RZm9a8H'
         FALCON_REGION = 'us-1'
         PROJECT_PATH = '/var/lib/jenkins/workspace/Spooky Pipeline'
-        CS_USERNAME = 'tmilewicz'
-        CS_PASSWORD = 'Thecure9992!'
         CS_REGISTRY = 'registry.crowdstrike.com'
     }
     // Added
