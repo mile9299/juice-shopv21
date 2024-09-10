@@ -2,7 +2,7 @@ pipeline {
     agent any
     
     environment {
-        JUICE_SHOP_REPO = 'https://github.com/mile9299/ju.git'
+        JUICE_SHOP_REPO = 'https://github.com/mile9299/juice-shopv21.git'
         DOCKER_PORT = 3000 // Default Docker port
         SPECTRAL_DSN = credentials('SPECTRAL_DSN')
         CS_IMAGE_NAME = 'scorpas/spooky'
