@@ -9,7 +9,7 @@ pipeline {
         CS_IAMGE_TAG = 'latest'
         CS_CLIENT_ID = 'e568db1fbbb04c5cb304816a3620892d'
         CS_CLIENT_SECRET = '7IO5uDQ04JbkoeplL1wMCXsnFGS3U6cf2RZm9a8H'
-        CS_USERNAME = 'tmilewicz'
+        CS_USERNAME = '58FC9E1DDE9946D4976B66844B4B15F6-D3'
         FALCON_REGION = 'us-1'
         PROJECT_PATH = '/var/lib/jenkins/workspace/Spooky Pipeline'
         CS_REGISTRY = 'registry.crowdstrike.com'
