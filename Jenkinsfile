@@ -11,7 +11,7 @@ pipeline {
         CS_CLIENT_SECRET = '7IO5uDQ04JbkoeplL1wMCXsnFGS3U6cf2RZm9a8H'
         CS_USERNAME = 'fc-58fc9e1dde9946d4976b66844b4b15f6'
         CS_PASSWORD = 'cmVmdGtuOjAxOjAwMDAwMDAwMDA6NDFTZnlnRTNWaE5pTlpsTm1SRGxXaW1Zb2NB'
-        FALCON_REGION = 'us-1'
+        FALCON_REGION = 'api.crowdstrike.com'
         PROJECT_PATH = '/var/lib/jenkins/workspace/juice-shopv21'
         CS_REGISTRY = 'registry.crowdstrike.com'
     }
