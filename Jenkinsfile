@@ -43,14 +43,13 @@ pipeline {
                     else  
                         # login to crowdstrike registry
                         echo "Logging in to crowdstrike registry with username: $CS_USERNAME"
-                       docker login "registry.crowdstrike.com" --username "fc-58fc9e1dde9946d4976b66844b4b15f6" --password "cmVmdGtuOjAxOjAwMDAwMDAwMDA6NDFTZnlnRTNWaE5pTlpsTm1SRGxXaW1Zb2NB"
+                        echo "$CS_PASSWORD" | docker login "$CS_REGISTRY" --username "$CS_USERNAME" --password-stdin
                         
                         if [ $? -eq 0 ]; then
                             echo "Docker login successful"
                             #  pull the fcs container target
                             echo "Pulling fcs container target from crowdstrike"
-                            docker pull registry.crowdstrike.com/fcs/us-1/release/cs-fcs:latest
-                           
+                            docker pull "$CS_IMAGE_NAME":"$CS_IMAGE_TAG"
                             if [ $? -eq 0 ]; then
                                 echo "fcs docker container image pulled successfully"
                                 echo "=============== FCS IaC Scan Starts ==============="
@@ -101,6 +100,7 @@ docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS
         }
     }
 }
+
 
         stage('Test with Snyk') {
             steps {
