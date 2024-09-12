@@ -12,7 +12,7 @@ pipeline {
         CS_USERNAME = 'mile'
         CS_PASSWORD = 'Thecure100'
         FALCON_REGION = 'us-1'
-        PROJECT_PATH = '/var/lib/jenkins/workspace/juice-shopv21'
+        PROJECT_PATH = '/var/lib/jenkins/workspace/IAC_Pipeline_Example'
         CS_REGISTRY = 'docker.com'
     }
     // Added
