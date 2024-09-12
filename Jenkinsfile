@@ -12,8 +12,7 @@ pipeline {
         CS_USERNAME = 'mile'
         CS_PASSWORD = credentials('CS_PASSWORD')
         FALCON_REGION = 'us-1'
-        PROJECT_PATH = 'git::https://github.com/mile9299/IAC_Examples.git'
-        CS_REGISTRY = 'docker.com'
+        PROJECT_PATH = 'https://github.com/hashicorp/terraform-guides.git'
     }
     // Added
     tools {
