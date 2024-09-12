@@ -7,10 +7,10 @@ pipeline {
         SPECTRAL_DSN = credentials('SPECTRAL_DSN')
         CS_IMAGE_NAME = 'mile/cs-fcs'
         CS_IMAGE_TAG = '0.42.0'
-        CS_CLIENT_ID = 'e568db1fbbb04c5cb304816a3620892d'
-        CS_CLIENT_SECRET = '7IO5uDQ04JbkoeplL1wMCXsnFGS3U6cf2RZm9a8H'
+        CS_CLIENT_ID = credentials('CS_CLIENT_ID')
+        CS_CLIENT_SECRET = credentials('CS_CLIENT_SECRET')
         CS_USERNAME = 'mile'
-        CS_PASSWORD = 'Thecure100'
+        CS_PASSWORD = credentials('CS_PASSWORD')
         FALCON_REGION = 'us-1'
         PROJECT_PATH = 'git::https://github.com/mile9299/IAC_Examples.git'
         CS_REGISTRY = 'docker.com'
