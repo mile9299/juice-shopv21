@@ -12,7 +12,7 @@ pipeline {
         CS_USERNAME = 'mile'
         CS_PASSWORD = 'Thecure100'
         FALCON_REGION = 'us-1'
-        PROJECT_PATH = 'https://github.com/mile9299/IAC_Examples.git'
+        PROJECT_PATH = 'git::https://github.com/mile9299/IAC_Examples.git'
         CS_REGISTRY = 'docker.com'
     }
     // Added
