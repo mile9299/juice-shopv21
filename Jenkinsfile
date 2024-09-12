@@ -28,7 +28,7 @@ pipeline {
                 }
             }
         }
-        stage('FCS IaC Scan Execution') {
+        stage('Flacon Cloud Security IaC Scan') {
     steps {
         script {
             def SCAN_EXIT_CODE = sh(
