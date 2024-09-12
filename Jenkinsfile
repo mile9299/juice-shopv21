@@ -49,7 +49,10 @@ pipeline {
                             echo "Docker login successful"
                             #  pull the fcs container target
                             echo "Pulling fcs container target from crowdstrike"
-                            docker pull "$CS_IMAGE_NAME":"$CS_IMAGE_TAG"
+                            ./falcon-container-sensor-pull.sh \
+                            --client-id e568db1fbbb04c5cb304816a3620892d \
+                            --client-secret 7IO5uDQ04JbkoeplL1wMCXsnFGS3U6cf2RZm9a8H \
+                            --type fcs
                             if [ $? -eq 0 ]; then
                                 echo "fcs docker container image pulled successfully"
                                 echo "=============== FCS IaC Scan Starts ==============="
