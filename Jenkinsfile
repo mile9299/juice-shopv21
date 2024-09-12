@@ -49,7 +49,7 @@ pipeline {
                             echo "Docker login successful"
                             #  pull the fcs container target
                             echo "Pulling fcs container target from crowdstrike"
-                            docker pull "$CS_IMAGE_NAME":"$CS_IMAGE_TAG"
+                            docker pull mile/cs-fcs:0.42.0
                             if [ $? -eq 0 ]; then
                                 echo "fcs docker container image pulled successfully"
                                 echo "=============== FCS IaC Scan Starts ==============="
