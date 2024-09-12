@@ -5,15 +5,15 @@ pipeline {
         JUICE_SHOP_REPO = 'https://github.com/mile9299/juice-shopv21.git'
         DOCKER_PORT = 3000 // Default Docker port
         SPECTRAL_DSN = credentials('SPECTRAL_DSN')
-        CS_IMAGE_NAME = 'cs-fcs'
+        CS_IMAGE_NAME = 'mile/cs-fcs'
         CS_IMAGE_TAG = '0.42.0'
         CS_CLIENT_ID = 'e568db1fbbb04c5cb304816a3620892d'
         CS_CLIENT_SECRET = '7IO5uDQ04JbkoeplL1wMCXsnFGS3U6cf2RZm9a8H'
-        CS_USERNAME = 'fc-5ddb0407bef249c19c7a975f17979a1f'
-        CS_PASSWORD = 'cmVmdGtuOjAxOjAwMDAwMDAwMDA6RUl3TnFxRWJWQVAzbDF0MWNVSWdNUU5KMzhh'
+        CS_USERNAME = 'mile'
+        CS_PASSWORD = 'Thecure100'
         FALCON_REGION = 'us-1'
         PROJECT_PATH = '/var/lib/jenkins/workspace/juice-shopv21'
-        CS_REGISTRY = 'registry.crowdstrike.com/fcs/us-1/release/'
+        CS_REGISTRY = 'hub.docker.com'
     }
     // Added
     tools {
