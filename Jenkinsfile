@@ -13,7 +13,7 @@ pipeline {
         CS_PASSWORD = 'Thecure100'
         FALCON_REGION = 'us-1'
         PROJECT_PATH = '/var/lib/jenkins/workspace/juice-shopv21'
-        CS_REGISTRY = 'hub.docker.com'
+        CS_REGISTRY = 'docker.com'
     }
     // Added
     tools {
