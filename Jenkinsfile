@@ -53,7 +53,7 @@ pipeline {
                                 echo "fcs docker container image pulled successfully"
                                 echo "=============== FCS IaC Scan Starts ==============="
 
-docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS_CLIENT_ID" --client-secret "$CS_CLIENT_SECRET" --falcon-region "$FALCON_REGION" iac scan -p "$PROJECT_PATH" --fail-on "high=10"
+docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS_CLIENT_ID" --client-secret "$CS_CLIENT_SECRET" --falcon-region "$FALCON_REGION" iac scan -p "$PROJECT_PATH" --fail-on "high=1,medium=1,low=1,info=1"
                                 scan_status=$?
                                 echo "=============== FCS IaC Scan Ends ==============="
                             else
@@ -68,7 +68,7 @@ docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS
                 ''', returnStatus: true
                 )
                 echo "fcs-iac-scan-status: ${SCAN_EXIT_CODE}"
-                if (SCAN_EXIT_CODE == 41) {
+                if (SCAN_EXIT_CODE == 40) {
                     echo "Scan succeeded & vulnerabilities count are ABOVE the '--fail-on' threshold; Pipeline will be marked as Success, but this stage will be marked as Unstable"
                     skipPublishingChecks: false
                     currentBuild.result = 'UNSTABLE'
