@@ -68,7 +68,7 @@ docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS
                 ''', returnStatus: true
                 )
                 echo "fcs-iac-scan-status: ${SCAN_EXIT_CODE}"
-                if (SCAN_EXIT_CODE == 40) {
+                if (SCAN_EXIT_CODE == 41) {
                     echo "Scan succeeded & vulnerabilities count are ABOVE the '--fail-on' threshold; Pipeline will be marked as Success, but this stage will be marked as Unstable"
                     skipPublishingChecks: false
                     currentBuild.result = 'UNSTABLE'
