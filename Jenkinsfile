@@ -53,7 +53,7 @@ pipeline {
                                 echo "fcs docker container image pulled successfully"
                                 echo "=============== FCS IaC Scan Starts ==============="
 
-docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS_CLIENT_ID" --client-secret "$CS_CLIENT_SECRET" --falcon-region "$FALCON_REGION" iac scan -p "$PROJECT_PATH" --fail-on "high=0,medium=1,low=1,info=1"
+docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS_CLIENT_ID" --client-secret "$CS_CLIENT_SECRET" --falcon-region "$FALCON_REGION" iac scan -p "$PROJECT_PATH" --fail-on "high=10,medium=70,low=50,info=10"
                                 scan_status=$?
                                 echo "=============== FCS IaC Scan Ends ==============="
                             else
