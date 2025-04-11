@@ -111,7 +111,7 @@ docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS
         stage('Falcon Cloud Security') {
             steps {
                 withCredentials([usernameColonPassword(credentialsId: 'CRWD', variable: 'FALCON_CREDENTIALS')]) {
-                    crowdStrikeSecurity imageName: 'spooky', imageTag: 'latest', enforce: false, timeout: 60
+                    crowdStrikeSecurity imageName: 'spooky', imageTag: 'latest', enforce: true, timeout: 60
                 }
             }
         }
