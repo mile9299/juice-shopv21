@@ -103,7 +103,7 @@ docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS
 
        stage('Test with Snyk') {
             steps {
-                dir('build') {
+                dir('node_modules') {
                     script {
                         snykSecurity failOnIssues: false, severity: 'critical', snykInstallation: 'snyk-manual', snykTokenId: 'SNYK'
                     }
