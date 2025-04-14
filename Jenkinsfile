@@ -101,12 +101,15 @@ docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS
 }
 
 
-        stage('Test with Snyk') {
+       stage('Test with Snyk') {
             steps {
-                script {
-                    snykSecurity failOnIssues: false, severity: 'critical', snykInstallation: 'snyk-manual', snykTokenId: 'SNYK'
+                dir('build') {
+                    script {
+                        snykSecurity failOnIssues: false, severity: 'critical', snykInstallation: 'snyk-manual', snykTokenId: 'SNYK'
+                    }
                 }
             }
+
         }
         stage('Falcon Cloud Security') {
             steps {
