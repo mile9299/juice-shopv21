@@ -7,7 +7,8 @@ pool:
   vmImage: ubuntu-latest
 
 variables:
-- template: variables/variables.yaml
+  # - template: variables/variables.yaml
+  - group: "Pipeline_Scanning_Variables" # specific to Azure DevOps
 
 steps:
 - task: AzureCLI@2
