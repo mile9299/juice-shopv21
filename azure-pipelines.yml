@@ -7,15 +7,21 @@ pool:
   vmImage: ubuntu-latest
 
 variables:
-  # - template: variables/variables.yaml
   - group: "Pipeline_Scanning_Variables" # specific to Azure DevOps
-  JUICE_SHOP_REPO: 'https://github.com/mile9299/juice-shopv21.git'
-  DOCKER_PORT: 3000 # Default Docker port
-  CS_IMAGE_NAME: 'mile/cs-fcs'
-  CS_IMAGE_TAG: '0.42.0'
-  CS_USERNAME: 'mile'
-  FALCON_REGION: 'us-1'
-  PROJECT_PATH: 'git::https://github.com/hashicorp/terraform-guides.git'
+  - name: JUICE_SHOP_REPO
+    value: 'https://github.com/mile9299/juice-shopv21.git'
+  - name: DOCKER_PORT
+    value: '3000' # Default Docker port
+  - name: CS_IMAGE_NAME
+    value: 'mile/cs-fcs'
+  - name: CS_IMAGE_TAG
+    value: '0.42.0'
+  - name: CS_USERNAME
+    value: 'mile'
+  - name: FALCON_REGION
+    value: 'us-1'
+  - name: PROJECT_PATH
+    value: 'git::https://github.com/hashicorp/terraform-guides.git'
 
 stages:
 - stage: Build
