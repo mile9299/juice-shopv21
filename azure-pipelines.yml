@@ -1,82 +1,123 @@
 trigger:
-- master
-
-pr:
-- master
+  branches:
+    include:
+    - "*"
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: ubuntu-latest
 
 variables:
-  JUICE_SHOP_REPO: 'https://github.com/bkimminich/juice-shop.git'
-  DOCKER_PORT: 3000
+- template: variables/variables.yaml
 
-jobs:
-- job: Test_with_Snyk
-  steps:
-  - checkout: self
+steps:
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: $(AzureSubscription)
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      az storage blob download \
+        --container-name $(containername) \
+        --file fcs_0.39.0_Linux_x86_64.tar.gz \
+        --name "fcs_0.39.0_Linux_x86_64.tar.gz"  \
+        --account-key $(accountkey) \
+        --account-name $(accountname)
+  displayName: 'Download CrowdStrike FCS IaC scanning tool from Azure Storage Account'
 
-  - task: UseDotNet@2
-    inputs:
-      packageType: 'sdk'
-      version: '3.1.x'
-      installationPath: $(Agent.ToolsDirectory)/dotnet
-      installationName: 'DotNetCoreSDK'
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: $(AzureSubscription)
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      tar xvzf fcs_0.39.0_Linux_x86_64.tar.gz
+      chmod +x fcs
+      ./fcs iac scan \
+        --fail-on "high=50,medium=50,low=50,info=50" \
+        --report-formats sarif \
+        --client-id $(FALCON_CLIENT_ID) \
+        --client-secret $(FALCON_CLIENT_SECRET) \
+        --falcon-region $(FALCON_CLOUD_REGION) \
+        --upload-results \
+        --output-path $(Build.SourcesDirectory) \
+        --path $(Build.SourcesDirectory) | tee scansummary.txt
+      SARIFFILE=$(grep 'Results saved to file:' scansummary.txt | sed 's/.*file: //')
+      jq '.runs[].tool.driver.informationUri = "https://www.crowdstrike.com"' $SARIFFILE > results.sarif
+  displayName: 'Scan repository with Crowdstrike FCS IaC scanning tool'
 
-  - script: |
-      npm install -g snyk
-      snyk auth f4835c65-42f8-40c8-a803-98d2f51b7eba
-      snyk test --severity-threshold=low
-    displayName: 'Test with Snyk'
+- publish: ./results.sarif
+  artifact: CodeAnalysisLogs
 
-- job: Build
-  steps:
-  - checkout: self
+- script: |
+    cat scansummary.txt
+  displayName: 'Return IAC Scan Summary'
 
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '10.x'
-    displayName: 'Install Node.js'
+- script: |
+    cat results.sarif
+  displayName: 'Return IAC Sarif Results'
 
-  - script: |
-      npm cache clean -f
-      npm install
-      npm start &
-      sleep 5
-    displayName: 'Build and Start Application'
+- task: Docker@2
+  inputs:
+    repository: $(CONTAINER_REPO)
+    tags: $(CONTAINER_TAG)
+    command: 'build'
+    Dockerfile: '**/Dockerfile'
+  displayName: 'Build container image using Docker'
 
-- job: Deploy
-  steps:
-  - checkout: self
+- script: |
+    export FALCON_CLIENT_SECRET=$(FALCON_CLIENT_SECRET)
+    export FALCON_CLIENT_ID=$(FALCON_CLIENT_ID)
+    pip3 install docker crowdstrike-falconpy
+    pip install retry
+    if [ ! -d container-image-scan ] ; then
+      git clone https://github.com/crowdstrike/container-image-scan
+    fi
+    python3 container-image-scan/cs_scanimage.py --json-report report.json 
+  displayName: 'Scan container image with CrowdStrike Container Image Scan'
 
-  - script: |
+- script: |
+    jq '.' report.json
+  displayName: 'Print CrowdStrike Full Image Scan Report'
+
+- task: CmdLine@2
+  inputs:
+    script: 'docker tag $(CONTAINER_REPO) $(azureContainerRegistry)/$(CONTAINER_REPO)'
+  displayName: 'Tag container image'
+
+- script: |
+    export FALCON_CLIENT_SECRET=$(FALCON_CLIENT_SECRET)
+    export FALCON_CLIENT_ID=$(FALCON_CLIENT_ID)
+    export API_BASE_URL=$(API_BASE_URL)
+    export YOUR_CLOUD=$(YOUR_CLOUD)
+    RESPONSE=$(curl \
+      --header "Content-Type: application/x-www-form-urlencoded" \
+      --data "client_id=${FALCON_CLIENT_ID}&client_secret=${FALCON_CLIENT_SECRET}" \
+      --request POST \
+      --silent ${API_BASE_URL}/oauth2/token) 
+    CS_JWT=$(echo ${RESPONSE} | jq -r '.access_token')
+    ImageCheck=$(curl -s -X GET -H "authorization: Bearer ${CS_JWT}" \
+      "https://container-upload.${YOUR_CLOUD}/policy-checks?policy_type=image-prevention-policy&repository=$CONTAINER_REPO&tag=$(CONTAINER_TAG)")
+    export test=$(echo $ImageCheck | jq '.resources[0].deny')
+    echo "##vso[task.setvariable variable=failBuild;isOutput=true]$test"
+  name: policy
+  displayName: 'Return API response from CrowdStrike Image Assessment'
+
+- bash: echo "$(policy.failBuild)"
+  displayName: 'Response from CrowdStrike Image Assessment'
+
+- task: Bash@3
+  displayName: 'Deploy'
+  inputs:
+    targetType: 'inline'
+    script: |
+      # Stop and remove the container if it exists
       docker stop juice-shop || true
       docker rm juice-shop || true
+      
+      # Build and run the Docker container with a dynamically allocated port
       docker build -t juice-shop .
-      export DOCKER_PORT=$(docker run -d -P --name juice-shop juice-shop)
-      export DOCKER_HOST_PORT=$(docker port $DOCKER_PORT 3000 | cut -d ':' -f 2)
+      CONTAINER_ID=$(docker run -d -P --name juice-shop juice-shop)
+      DOCKER_HOST_PORT=$(docker port juice-shop 3000 | cut -d ':' -f 2)
+      
       echo "Juice Shop is running on http://localhost:$DOCKER_HOST_PORT"
-    displayName: 'Deploy to Docker'
-
-  - script: |
-      git fetch --all
-      git switch `basename $(Build.SourceBranch)`
-    displayName: 'Switch Branch'
-
- # - script: |
- #     curl -L 'https://get.spectralops.io/latest/x/sh?dsn=$(SPECTRAL_DSN)' | sh
- #   displayName: 'Install Spectral'
-
- # - script: |
- #     $HOME/.spectral/spectral scan --ok --dsn $(SPECTRAL_DSN) --include-tags base,audit
- #   displayName: 'Spectral Scan'
-
-- job: Post
-  steps:
-  - script: |
-      echo 'Build, test, and deployment successful!'
-    displayName: 'Post-Success'
-
-  - script: |
-      echo 'Build, test, or deployment failed!'
-    displayName: 'Post-Failure'
+      echo "##vso[task.setvariable variable=DOCKER_HOST_PORT;isOutput=true]$DOCKER_HOST_PORT"
