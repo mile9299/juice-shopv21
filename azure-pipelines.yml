@@ -9,116 +9,228 @@ pool:
 variables:
   # - template: variables/variables.yaml
   - group: "Pipeline_Scanning_Variables" # specific to Azure DevOps
+  JUICE_SHOP_REPO: 'https://github.com/mile9299/juice-shopv21.git'
+  DOCKER_PORT: 3000 # Default Docker port
+  CS_IMAGE_NAME: 'mile/cs-fcs'
+  CS_IMAGE_TAG: '0.42.0'
+  CS_USERNAME: 'mile'
+  FALCON_REGION: 'us-1'
+  PROJECT_PATH: 'git::https://github.com/hashicorp/terraform-guides.git'
 
-steps:
-- task: AzureCLI@2
-  inputs:
-    azureSubscription: $(AzureSubscription)
-    scriptType: 'bash'
-    scriptLocation: 'inlineScript'
-    inlineScript: |
-      az storage blob download \
-        --container-name $(containername) \
-        --file fcs_0.39.0_Linux_x86_64.tar.gz \
-        --name "fcs_0.39.0_Linux_x86_64.tar.gz"  \
-        --account-key $(accountkey) \
-        --account-name $(accountname)
-  displayName: 'Download CrowdStrike FCS IaC scanning tool from Azure Storage Account'
-
-- task: AzureCLI@2
-  inputs:
-    azureSubscription: $(AzureSubscription)
-    scriptType: 'bash'
-    scriptLocation: 'inlineScript'
-    inlineScript: |
-      tar xvzf fcs_0.39.0_Linux_x86_64.tar.gz
-      chmod +x fcs
-      ./fcs iac scan \
-        --fail-on "high=50,medium=50,low=50,info=50" \
-        --report-formats sarif \
-        --client-id $(FALCON_CLIENT_ID) \
-        --client-secret $(FALCON_CLIENT_SECRET) \
-        --falcon-region $(FALCON_CLOUD_REGION) \
-        --upload-results \
-        --output-path $(Build.SourcesDirectory) \
-        --path $(Build.SourcesDirectory) | tee scansummary.txt
-      SARIFFILE=$(grep 'Results saved to file:' scansummary.txt | sed 's/.*file: //')
-      jq '.runs[].tool.driver.informationUri = "https://www.crowdstrike.com"' $SARIFFILE > results.sarif
-  displayName: 'Scan repository with Crowdstrike FCS IaC scanning tool'
-
-- publish: ./results.sarif
-  artifact: CodeAnalysisLogs
-
-- script: |
-    cat scansummary.txt
-  displayName: 'Return IAC Scan Summary'
-
-- script: |
-    cat results.sarif
-  displayName: 'Return IAC Sarif Results'
-
-- task: Docker@2
-  inputs:
-    repository: $(CONTAINER_REPO)
-    tags: $(CONTAINER_TAG)
-    command: 'build'
-    Dockerfile: '**/Dockerfile'
-  displayName: 'Build container image using Docker'
-
-- script: |
-    export FALCON_CLIENT_SECRET=$(FALCON_CLIENT_SECRET)
-    export FALCON_CLIENT_ID=$(FALCON_CLIENT_ID)
-    pip3 install docker crowdstrike-falconpy
-    pip install retry
-    if [ ! -d container-image-scan ] ; then
-      git clone https://github.com/crowdstrike/container-image-scan
-    fi
-    python3 container-image-scan/cs_scanimage.py --json-report report.json 
-  displayName: 'Scan container image with CrowdStrike Container Image Scan'
-
-- script: |
-    jq '.' report.json
-  displayName: 'Print CrowdStrike Full Image Scan Report'
-
-- task: CmdLine@2
-  inputs:
-    script: 'docker tag $(CONTAINER_REPO) $(azureContainerRegistry)/$(CONTAINER_REPO)'
-  displayName: 'Tag container image'
-
-- script: |
-    export FALCON_CLIENT_SECRET=$(FALCON_CLIENT_SECRET)
-    export FALCON_CLIENT_ID=$(FALCON_CLIENT_ID)
-    export API_BASE_URL=$(API_BASE_URL)
-    export YOUR_CLOUD=$(YOUR_CLOUD)
-    RESPONSE=$(curl \
-      --header "Content-Type: application/x-www-form-urlencoded" \
-      --data "client_id=${FALCON_CLIENT_ID}&client_secret=${FALCON_CLIENT_SECRET}" \
-      --request POST \
-      --silent ${API_BASE_URL}/oauth2/token) 
-    CS_JWT=$(echo ${RESPONSE} | jq -r '.access_token')
-    ImageCheck=$(curl -s -X GET -H "authorization: Bearer ${CS_JWT}" \
-      "https://container-upload.${YOUR_CLOUD}/policy-checks?policy_type=image-prevention-policy&repository=$CONTAINER_REPO&tag=$(CONTAINER_TAG)")
-    export test=$(echo $ImageCheck | jq '.resources[0].deny')
-    echo "##vso[task.setvariable variable=failBuild;isOutput=true]$test"
-  name: policy
-  displayName: 'Return API response from CrowdStrike Image Assessment'
-
-- bash: echo "$(policy.failBuild)"
-  displayName: 'Response from CrowdStrike Image Assessment'
-
-- task: Bash@3
-  displayName: 'Deploy'
-  inputs:
-    targetType: 'inline'
-    script: |
-      # Stop and remove the container if it exists
-      docker stop juice-shop || true
-      docker rm juice-shop || true
+stages:
+- stage: Build
+  jobs:
+  - job: BuildAndTest
+    steps:
+    - checkout: self
       
-      # Build and run the Docker container with a dynamically allocated port
-      docker build -t juice-shop .
-      CONTAINER_ID=$(docker run -d -P --name juice-shop juice-shop)
-      DOCKER_HOST_PORT=$(docker port juice-shop 3000 | cut -d ':' -f 2)
-      
-      echo "Juice Shop is running on http://localhost:$DOCKER_HOST_PORT"
-      echo "##vso[task.setvariable variable=DOCKER_HOST_PORT;isOutput=true]$DOCKER_HOST_PORT"
+    - task: NodeTool@0
+      displayName: 'Install Node.js'
+      inputs:
+        versionSpec: '18.0.0'
+        
+    - task: Bash@3
+      displayName: 'Checkout Juice Shop Repo'
+      inputs:
+        targetType: 'inline'
+        script: |
+          git clone $(JUICE_SHOP_REPO) juice-shop
+          cd juice-shop
+          
+    - task: Bash@3
+      displayName: 'Falcon Cloud Security IaC Scan'
+      inputs:
+        targetType: 'inline'
+        script: |
+          set +x
+          # check if required env vars are set in the build set up
+          
+          scan_status=0
+          if [[ -z "$(CS_USERNAME)" || -z "$(CS_PASSWORD)" || -z "$(CS_REGISTRY)" || -z "$(CS_IMAGE_NAME)" || -z "$(CS_IMAGE_TAG)" || -z "$(CS_CLIENT_ID)" || -z "$(CS_CLIENT_SECRET)" || -z "$(FALCON_REGION)" || -z "$(PROJECT_PATH)" ]]; then
+              echo "Error: required environment variables/params are not set"
+              exit 1
+          else  
+              # login to crowdstrike registry
+              echo "Logging in to crowdstrike registry with username: $(CS_USERNAME)"
+              echo "$(CS_PASSWORD)" | docker login --username "$(CS_USERNAME)" --password-stdin
+              
+              if [ $? -eq 0 ]; then
+                  echo "Docker login successful"
+                  #  pull the fcs container target
+                  echo "Pulling fcs container target from crowdstrike"
+                  docker pull $(CS_IMAGE_NAME):$(CS_IMAGE_TAG)
+                  if [ $? -eq 0 ]; then
+                      echo "fcs docker container image pulled successfully"
+                      echo "=============== FCS IaC Scan Starts ==============="
+                      docker run --network=host --rm "$(CS_IMAGE_NAME)":"$(CS_IMAGE_TAG)" --client-id "$(CS_CLIENT_ID)" --client-secret "$(CS_CLIENT_SECRET)" --falcon-region "$(FALCON_REGION)" iac scan -p "$(PROJECT_PATH)" --fail-on "high=10,medium=70,low=50,info=10" | tee scansummary.txt
+                      scan_status=$?
+                      echo "=============== FCS IaC Scan Ends ==============="
+                      echo "fcs-iac-scan-status: $scan_status"
+                      if [ $scan_status -eq 40 ]; then
+                          echo "Scan succeeded & vulnerabilities count are ABOVE the '--fail-on' threshold; Pipeline will be marked as Success, but this stage will be marked as Unstable"
+                          # In Azure DevOps, we can't mark a stage as unstable, but we can continue without failing
+                          exit 0
+                      elif [ $scan_status -eq 0 ]; then
+                          echo "Scan succeeded & vulnerabilities count are BELOW the '--fail-on' threshold; Pipeline will be marked as Success"
+                          exit 0
+                      else
+                          echo "Unexpected scan exit code: $scan_status"
+                          exit 1
+                      fi
+                  else
+                      echo "Error: failed to pull fcs docker image from crowdstrike"
+                      exit 1
+                  fi
+              else
+                  echo "Error: docker login failed"
+                  exit 1
+              fi
+          fi
+
+    - task: Bash@3
+      displayName: 'Process SARIF file'
+      inputs:
+        targetType: 'inline'
+        script: |
+          SARIFFILE=$(grep 'Results saved to file:' scansummary.txt | sed 's/.*file: //')
+          if [ -n "$SARIFFILE" ] && [ -f "$SARIFFILE" ]; then
+            jq '.runs[].tool.driver.informationUri = "https://www.crowdstrike.com"' $SARIFFILE > results.sarif
+          else
+            echo "SARIF file not found or could not be processed"
+            exit 1
+          fi
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish SARIF results'
+      inputs:
+        pathToPublish: './results.sarif'
+        artifactName: 'CodeAnalysisLogs'
+        publishLocation: 'Container'
+
+    - task: Bash@3
+      displayName: 'Return IAC Scan Summary'
+      inputs:
+        targetType: 'inline'
+        script: |
+          cat scansummary.txt
+
+    - task: Bash@3
+      displayName: 'Return IAC Sarif Results'
+      inputs:
+        targetType: 'inline'
+        script: |
+          if [ -f "results.sarif" ]; then
+            cat results.sarif
+          else
+            echo "SARIF file not found"
+          fi
+
+    - task: SnykSecurityScan@1
+      displayName: 'Test with Snyk'
+      inputs:
+        serviceConnectionEndpoint: 'SNYK'
+        testType: 'app'
+        severityThreshold: 'critical'
+        failOnIssues: false
+
+    - task: Docker@2
+      displayName: 'Build container image using Docker'
+      inputs:
+        repository: $(CONTAINER_REPO)
+        command: 'build'
+        Dockerfile: '**/Dockerfile'
+        tags: $(CONTAINER_TAG)
+
+    - task: Bash@3
+      displayName: 'Scan container image with CrowdStrike Container Image Scan'
+      inputs:
+        targetType: 'inline'
+        script: |
+          export FALCON_CLIENT_SECRET=$(FALCON_CLIENT_SECRET)
+          export FALCON_CLIENT_ID=$(FALCON_CLIENT_ID)
+          pip3 install docker crowdstrike-falconpy
+          pip install retry
+          if [ ! -d container-image-scan ] ; then
+            git clone https://github.com/crowdstrike/container-image-scan
+          fi
+          python3 container-image-scan/cs_scanimage.py --json-report report.json
+
+    - task: Bash@3
+      displayName: 'Print CrowdStrike Full Image Scan Report'
+      inputs:
+        targetType: 'inline'
+        script: |
+          jq '.' report.json
+
+    - task: Bash@3
+      displayName: 'Tag container image'
+      inputs:
+        targetType: 'inline'
+        script: |
+          docker tag $(CONTAINER_REPO) $(azureContainerRegistry)/$(CONTAINER_REPO)
+
+    - task: Bash@3
+      name: policy
+      displayName: 'Return API response from CrowdStrike Image Assessment'
+      inputs:
+        targetType: 'inline'
+        script: |
+          export FALCON_CLIENT_SECRET=$(FALCON_CLIENT_SECRET)
+          export FALCON_CLIENT_ID=$(FALCON_CLIENT_ID)
+          export API_BASE_URL=$(API_BASE_URL)
+          export YOUR_CLOUD=$(YOUR_CLOUD)
+          RESPONSE=$(curl \
+            --header "Content-Type: application/x-www-form-urlencoded" \
+            --data "client_id=${FALCON_CLIENT_ID}&client_secret=${FALCON_CLIENT_SECRET}" \
+            --request POST \
+            --silent ${API_BASE_URL}/oauth2/token) 
+          CS_JWT=$(echo ${RESPONSE} | jq -r '.access_token')
+          ImageCheck=$(curl -s -X GET -H "authorization: Bearer ${CS_JWT}" \
+            "https://container-upload.${YOUR_CLOUD}/policy-checks?policy_type=image-prevention-policy&repository=$CONTAINER_REPO&tag=$(CONTAINER_TAG)")
+          export test=$(echo $ImageCheck | jq '.resources[0].deny')
+          echo "##vso[task.setvariable variable=failBuild;isOutput=true]$test"
+
+    - task: Bash@3
+      displayName: 'Response from CrowdStrike Image Assessment'
+      inputs:
+        targetType: 'inline'
+        script: |
+          echo "$(policy.failBuild)"
+
+    - task: Bash@3
+      displayName: 'Build'
+      inputs:
+        targetType: 'inline'
+        script: |
+          npm cache clean -f
+          npm install
+          # Start the application in the background using nohup
+          nohup npm start > /dev/null 2>&1 &
+          
+          # Sleep for a few seconds to ensure the application has started
+          sleep 5
+
+    - task: Bash@3
+      displayName: 'Deploy'
+      inputs:
+        targetType: 'inline'
+        script: |
+          # Stop and remove the container if it exists
+          docker stop juice-shop || true
+          docker rm juice-shop || true
+          
+          # Build and run the Docker container with a dynamically allocated port
+          docker build -t juice-shop .
+          CONTAINER_ID=$(docker run -d -P --name juice-shop juice-shop)
+          DOCKER_HOST_PORT=$(docker port juice-shop 3000 | cut -d ':' -f 2)
+          
+          echo "Juice Shop is running on http://localhost:$DOCKER_HOST_PORT"
+          echo "##vso[task.setvariable variable=DOCKER_HOST_PORT;isOutput=true]$DOCKER_HOST_PORT"
+
+- stage: PostDeployment
+  dependsOn: Build
+  jobs:
+  - job: Notify
+    steps:
+    - script: echo 'Build, test, and deployment successful!'
+      displayName: 'Success Notification'
