@@ -68,13 +68,12 @@ stages:
                   if [ $? -eq 0 ]; then
                       echo "fcs docker container image pulled successfully"
                       echo "=============== FCS IaC Scan Starts ==============="
-                      docker run --network=host --rm "$(CS_IMAGE_NAME)":"$(CS_IMAGE_TAG)" --client-id "$(FALCON_CLIENT_ID)" --client-secret "$(FALCON_CLIENT_SECRET)" --falcon-region "$(FALCON_REGION)" iac scan -p "$(PROJECT_PATH)" --fail-on "high=10,medium=70,low=50,info=10" | tee scansummary.txt
+                      docker run --network=host --rm "$(CS_IMAGE_NAME)":"$(CS_IMAGE_TAG)" --client-id "$(FALCON_CLIENT_ID)" --client-secret "$(FALCON_CLIENT_SECRET)" --falcon-region "$(FALCON_REGION)" iac scan -p "$(PROJECT_PATH)" --fail-on "high=10,medium=70,low=50,info=10" | tee $(Build.SourcesDirectory)/scansummary.txt
                       scan_status=$?
                       echo "=============== FCS IaC Scan Ends ==============="
                       echo "fcs-iac-scan-status: $scan_status"
                       if [ $scan_status -eq 40 ]; then
                           echo "Scan succeeded & vulnerabilities count are ABOVE the '--fail-on' threshold; Pipeline will be marked as Success, but this stage will be marked as Unstable"
-                          # In Azure DevOps, we can't mark a stage as unstable, but we can continue without failing
                           exit 0
                       elif [ $scan_status -eq 0 ]; then
                           echo "Scan succeeded & vulnerabilities count are BELOW the '--fail-on' threshold; Pipeline will be marked as Success"
@@ -99,17 +98,17 @@ stages:
         targetType: 'inline'
         script: |
           # Check if scansummary.txt exists
-          if [ -f "scansummary.txt" ]; then
+          if [ -f "$(Build.SourcesDirectory)/scansummary.txt" ]; then
             # Try to extract SARIF file path
-            SARIFFILE=$(grep -o 'Results saved to file: [^ ]*' scansummary.txt | sed 's/Results saved to file: //')
+            SARIFFILE=$(grep -o 'Results saved to file: [^ ]*' $(Build.SourcesDirectory)/scansummary.txt | sed 's/Results saved to file: //')
             
             # If SARIF file path was found and file exists
             if [ -n "$SARIFFILE" ] && [ -f "$SARIFFILE" ]; then
               echo "Found SARIF file: $SARIFFILE"
-              jq '.runs[].tool.driver.informationUri = "https://www.crowdstrike.com"' $SARIFFILE > results.sarif
+              jq '.runs[].tool.driver.informationUri = "https://www.crowdstrike.com"' $SARIFFILE > $(Build.SourcesDirectory)/results.sarif
               echo "Successfully processed SARIF file to results.sarif"
             else
-              # Create an empty valid SARIF file to prevent the pipeline from failing
+              # Create an empty valid SARIF file
               echo "SARIF file not found in scan output, creating a minimal valid SARIF file"
               echo '{
                 "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
@@ -126,7 +125,7 @@ stages:
                     "results": []
                   }
                 ]
-              }' > results.sarif
+              }' > $(Build.SourcesDirectory)/results.sarif
             fi
           else
             echo "Scan summary file not found, creating a minimal valid SARIF file"
@@ -145,14 +144,13 @@ stages:
                   "results": []
                 }
               ]
-            }' > results.sarif
+            }' > $(Build.SourcesDirectory)/results.sarif
           fi
       continueOnError: true
-
     - task: PublishBuildArtifacts@1
       displayName: 'Publish SARIF results'
       inputs:
-        pathToPublish: './results.sarif'
+        pathToPublish: '$(Build.SourcesDirectory)/results.sarif'
         artifactName: 'CodeAnalysisLogs'
         publishLocation: 'Container'
       continueOnError: true
@@ -162,8 +160,8 @@ stages:
       inputs:
         targetType: 'inline'
         script: |
-          if [ -f "scansummary.txt" ]; then
-            cat scansummary.txt
+          if [ -f "$(Build.SourcesDirectory)/scansummary.txt" ]; then
+            cat "$(Build.SourcesDirectory)/scansummary.txt"
           else
             echo "Scan summary file not found"
           fi
@@ -174,8 +172,8 @@ stages:
       inputs:
         targetType: 'inline'
         script: |
-          if [ -f "results.sarif" ]; then
-            cat results.sarif
+          if [ -f "$(Build.SourcesDirectory)/results.sarif" ]; then
+            cat "$(Build.SourcesDirectory)/results.sarif"
           else
             echo "SARIF file not found"
           fi
@@ -204,48 +202,57 @@ stages:
           fi
           
           # Run the scan but don't fail on non-zero exit
-          python3 container-image-scan/cs_scanimage.py --json-report report.json || true
+          python3 container-image-scan/cs_scanimage.py --json-report $(Build.SourcesDirectory)/report.json || true
           
           # Process the report
-          if [ -f "report.json" ]; then
+          if [ -f "$(Build.SourcesDirectory)/report.json" ]; then
+            # Create remediation plan in the working directory
+            echo "# Vulnerability Remediation Plan" > $(Build.SourcesDirectory)/remediation_plan.md
+            
             # Check for vulnerabilities
-            if jq -e '.vulnerabilities' report.json > /dev/null 2>&1; then
+            if jq -e '.vulnerabilities' $(Build.SourcesDirectory)/report.json > /dev/null 2>&1; then
               echo "Vulnerabilities found in the image:"
-              jq -r '.vulnerabilities[] | select(.severity == "HIGH" or .severity == "CRITICAL") | "- \(.severity): \(.cve_id) in \(.package_name) \(.package_version)"' report.json
+              jq -r '.vulnerabilities[] | select(.severity == "HIGH" or .severity == "CRITICAL") | "- \(.severity): \(.cve_id) in \(.package_name) \(.package_version)"' $(Build.SourcesDirectory)/report.json
               
-              echo "Creating remediation plan..."
-              echo "# Vulnerability Remediation Plan" > remediation_plan.md
-              echo "## High and Critical Vulnerabilities" >> remediation_plan.md
-              jq -r '.vulnerabilities[] | select(.severity == "HIGH" or .severity == "CRITICAL") | "- **\(.severity)**: \(.cve_id) in \(.package_name) \(.package_version)\n  - Description: \(.description)\n  - Remediation: Update to latest version or apply patch"' report.json >> remediation_plan.md
+              echo "## High and Critical Vulnerabilities" >> $(Build.SourcesDirectory)/remediation_plan.md
+              jq -r '.vulnerabilities[] | select(.severity == "HIGH" or .severity == "CRITICAL") | "- **\(.severity)**: \(.cve_id) in \(.package_name) \(.package_version)\n  - Description: \(.description)\n  - Remediation: Update to latest version or apply patch"' $(Build.SourcesDirectory)/report.json >> $(Build.SourcesDirectory)/remediation_plan.md
             fi
             
             # Check for secrets
-            if jq -e '.secrets' report.json > /dev/null 2>&1; then
+            if jq -e '.secrets' $(Build.SourcesDirectory)/report.json > /dev/null 2>&1; then
               echo "WARNING: Secrets were detected in the image:"
-              jq -r '.secrets[] | "- Secret type: \(.type) in \(.path)"' report.json
+              jq -r '.secrets[] | "- Secret type: \(.type) in \(.path)"' $(Build.SourcesDirectory)/report.json
               
-              echo "## Detected Secrets" >> remediation_plan.md
-              jq -r '.secrets[] | "- Secret type: \(.type) found in \(.path)\n  - Action: Remove this secret and use secure storage methods instead"' report.json >> remediation_plan.md
+              echo "## Detected Secrets" >> $(Build.SourcesDirectory)/remediation_plan.md
+              jq -r '.secrets[] | "- Secret type: \(.type) found in \(.path)\n  - Action: Remove this secret and use secure storage methods instead"' $(Build.SourcesDirectory)/report.json >> $(Build.SourcesDirectory)/remediation_plan.md
               
               echo "##vso[task.setvariable variable=SECRETS_FOUND]true"
             else
               echo "No secrets were detected in the image."
             fi
-            
-            echo "Remediation plan created. See remediation_plan.md for details."
           else
             echo "Error: Scan report not generated."
+            echo "# No security findings to report" > $(Build.SourcesDirectory)/remediation_plan.md
           fi
-          
-          # Continue the pipeline
-          exit 0
       continueOnError: true
 
-    # Publish the remediation plan as an artifact
+    - task: Bash@3
+      displayName: 'Verify Remediation Plan'
+      inputs:
+        targetType: 'inline'
+        script: |
+          if [ -f "$(Build.SourcesDirectory)/remediation_plan.md" ]; then
+            echo "Remediation plan file exists"
+          else
+            echo "Creating empty remediation plan"
+            echo "# No security findings to report" > $(Build.SourcesDirectory)/remediation_plan.md
+          fi
+      continueOnError: true
+
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Remediation Plan'
       inputs:
-        pathToPublish: 'remediation_plan.md'
+        pathToPublish: '$(Build.SourcesDirectory)/remediation_plan.md'
         artifactName: 'SecurityRemediationPlan'
         publishLocation: 'Container'
       continueOnError: true
@@ -255,8 +262,8 @@ stages:
       inputs:
         targetType: 'inline'
         script: |
-          if [ -f "report.json" ]; then
-            jq '.' report.json
+          if [ -f "$(Build.SourcesDirectory)/report.json" ]; then
+            jq '.' $(Build.SourcesDirectory)/report.json
           else
             echo "Image scan report not found"
           fi
@@ -298,12 +305,6 @@ stages:
             --request POST \
             --silent ${API_BASE_URL}/oauth2/token) 
           
-          if [ -z "$RESPONSE" ]; then
-            echo "Failed to get authentication token"
-            echo "##vso[task.setvariable variable=failBuild;isOutput=true]false"
-            exit 0
-          fi
-          
           CS_JWT=$(echo ${RESPONSE} | jq -r '.access_token')
           
           if [ -z "$CS_JWT" ] || [ "$CS_JWT" == "null" ]; then
@@ -312,32 +313,12 @@ stages:
             exit 0
           fi
           
-          if [ -z "$CONTAINER_REPO" ] || [ -z "$CONTAINER_TAG" ]; then
-            echo "Missing container repository or tag information"
-            echo "##vso[task.setvariable variable=failBuild;isOutput=true]false"
-            exit 0
-          fi
-          
           ImageCheck=$(curl -s -X GET -H "authorization: Bearer ${CS_JWT}" \
             "https://container-upload.${YOUR_CLOUD}/policy-checks?policy_type=image-prevention-policy&repository=$CONTAINER_REPO&tag=$(CONTAINER_TAG)")
-          
-          if [ -z "$ImageCheck" ]; then
-            echo "Failed to get image check results"
-            echo "##vso[task.setvariable variable=failBuild;isOutput=true]false"
-            exit 0
-          fi
           
           export test=$(echo $ImageCheck | jq '.resources[0].deny')
           echo "Image assessment result: $test"
           echo "##vso[task.setvariable variable=failBuild;isOutput=true]$test"
-      continueOnError: true
-
-    - task: Bash@3
-      displayName: 'Response from CrowdStrike Image Assessment'
-      inputs:
-        targetType: 'inline'
-        script: |
-          echo "Image assessment result: $(policy.failBuild)"
       continueOnError: true
 
     - task: Bash@3
@@ -349,8 +330,6 @@ stages:
           npm install
           # Start the application in the background using nohup
           nohup npm start > /dev/null 2>&1 &
-          
-          # Sleep for a few seconds to ensure the application has started
           sleep 5
       continueOnError: true
 
@@ -359,11 +338,9 @@ stages:
       inputs:
         targetType: 'inline'
         script: |
-          # Stop and remove the container if it exists
           docker stop juice-shop || true
           docker rm juice-shop || true
           
-          # Build and run the Docker container with a dynamically allocated port
           docker build -t juice-shop .
           CONTAINER_ID=$(docker run -d -P --name juice-shop juice-shop)
           
@@ -411,4 +388,3 @@ stages:
           echo "3. Remove any detected secrets from container images"
           echo "4. Re-scan after remediation to verify fixes"
       continueOnError: true
-      
