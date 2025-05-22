@@ -181,15 +181,6 @@ stages:
           fi
       continueOnError: true
 
-    - task: SnykSecurityScan@1
-      displayName: 'Test with Snyk'
-      inputs:
-        serviceConnectionEndpoint: 'SNYK'
-        testType: 'app'
-        severityThreshold: 'critical'
-        failOnIssues: false
-      continueOnError: true
-
     - task: Docker@2
       displayName: 'Build container image using Docker'
       inputs:
