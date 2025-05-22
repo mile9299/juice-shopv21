@@ -305,7 +305,7 @@ stages:
             --request POST \
             --silent ${API_BASE_URL}/oauth2/token) 
           
-          CS_JWT=$(echo ${RESPONSE} | jq -r '.access_token')
+          CS_JWT="$CS_JWT"
           
           if [ -z "$CS_JWT" ] || [ "$CS_JWT" == "null" ]; then
             echo "Failed to extract access token"
