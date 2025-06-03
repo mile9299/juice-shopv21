@@ -13,9 +13,9 @@ variables:
   - name: DOCKER_PORT
     value: '3000' # Default Docker port
   - name: CS_IMAGE_NAME
-    value: 'mile/cs-fcs'
+    value: 'mile/fcs'
   - name: CS_IMAGE_TAG
-    value: '0.42.0'
+    value: '1.0.0'
   - name: CS_USERNAME
     value: 'mile'
   - name: FALCON_REGION
