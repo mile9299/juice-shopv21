@@ -6,7 +6,7 @@ pipeline {
         DOCKER_PORT = 3000 // Default Docker port
         SPECTRAL_DSN = credentials('SPECTRAL_DSN')
         CS_IMAGE_NAME = 'mile/cs-fcs'
-        CS_IMAGE_TAG = '0.42.0'
+        CS_IMAGE_TAG = '1.0.0'
         CS_CLIENT_ID = credentials('CS_CLIENT_ID')
         CS_CLIENT_SECRET = credentials('CS_CLIENT_SECRET')
         CS_USERNAME = 'mile'
