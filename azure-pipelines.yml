@@ -68,7 +68,7 @@ stages:
                   if [ $? -eq 0 ]; then
                       echo "fcs docker container image pulled successfully"
                       echo "=============== FCS IaC Scan Starts ==============="
-                      docker run --network=host --rm "$(CS_IMAGE_NAME)":"$(CS_IMAGE_TAG)" --client-id "$(FALCON_CLIENT_ID)" --client-secret "$(FALCON_CLIENT_SECRET)" --falcon-region "$(FALCON_REGION)" iac scan -p "$(PROJECT_PATH)" --upload-results -v | tee $(Build.SourcesDirectory)/scansummary.txt
+                      docker run --network=host --rm "$(CS_IMAGE_NAME)":"$(CS_IMAGE_TAG)" --client-id "$(FALCON_CLIENT_ID)" --client-secret "$(FALCON_CLIENT_SECRET)" --falcon-region "$(FALCON_REGION)" iac scan -p "$(PROJECT_PATH)" --upload-results  | tee $(Build.SourcesDirectory)/scansummary.txt
                       echo "=============== FCS IaC Scan Ends ==============="
                       echo "fcs-iac-scan-status: $scan_status"
                       if [ $scan_status -eq 40 ]; then
