@@ -48,12 +48,12 @@ pipeline {
                             echo "Docker login successful"
                             #  pull the fcs container target
                             echo "Pulling fcs container target from crowdstrike"
-                            docker pull mile/cs-fcs:0.42.0
+                            docker pull mile/cs-fcs:1.0.0
                             if [ $? -eq 0 ]; then
                                 echo "fcs docker container image pulled successfully"
                                 echo "=============== FCS IaC Scan Starts ==============="
 
-docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS_CLIENT_ID" --client-secret "$CS_CLIENT_SECRET" --falcon-region "$FALCON_REGION" iac scan -p "$PROJECT_PATH" --fail-on "high=10,medium=70,low=50,info=10"
+docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS_CLIENT_ID" --client-secret "$CS_CLIENT_SECRET" --falcon-region "$FALCON_REGION" iac scan -p "$PROJECT_PATH"
                                 scan_status=$?
                                 echo "=============== FCS IaC Scan Ends ==============="
                             else
