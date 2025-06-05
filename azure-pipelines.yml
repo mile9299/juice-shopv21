@@ -21,7 +21,7 @@ variables:
   - name: FALCON_REGION
     value: 'us-1'
   - name: PROJECT_PATH
-    value: 'git::https://github.com/doitintl/terraform-iac-demo.git'
+    value: 'git::git::https://github.com/hashicorp/terraform-guides.git'
 
 stages:
 - stage: Build
