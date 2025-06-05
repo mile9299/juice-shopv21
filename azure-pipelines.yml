@@ -21,7 +21,7 @@ variables:
   - name: FALCON_REGION
     value: 'us-1'
   - name: PROJECT_PATH
-    value: 'git::https://github.com/pulumi/pulumi.git'
+    value: 'git::https://github.com/mile9299/snyk-apps-demo.git'
 
 stages:
 - stage: Build
