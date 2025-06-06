@@ -21,7 +21,7 @@ variables:
   - name: FALCON_REGION
     value: 'us-1'
   - name: PROJECT_PATH
-    value: 'git::https://github.com/geerlingguy/ansible-for-devops.git'
+    value: 'git::https://github.com/aws/aws-sam-cli-app-templates.git'
 
 stages:
 - stage: Build
