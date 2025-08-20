@@ -21,7 +21,7 @@ variables:
   - name: FALCON_REGION
     value: 'us-1'
   - name: PROJECT_PATH
-    value: 'git::https://github.com/tenable/KaiMonkey.git'
+    value: 'git::https://github.com/Azure/azure-docs-bicep-samples.git'
 
 stages:
 - stage: Build
