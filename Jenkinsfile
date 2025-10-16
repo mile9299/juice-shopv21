@@ -109,7 +109,17 @@ pipeline {
         stage('Falcon Cloud Security') {
             steps {
                 withCredentials([usernameColonPassword(credentialsId: 'CRWD', variable: 'FALCON_CREDENTIALS')]) {
-                    crowdStrikeSecurity imageName: 'spooky', imageTag: 'latest', enforce: true, timeout: 60
+                    (
+                imageName: 'spooky', 
+                imageTag: 'latest', 
+                enforce: true, 
+                timeout: 60,
+                // Add these parameters for better debugging
+                failOnCriticalSeverity: true,
+                failOnHighSeverity: true,
+                failOnMediumSeverity: false,  // Adjust based on your policy
+                failOnPolicyViolation: true
+            )
                 }
             }
         }
