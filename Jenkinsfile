@@ -211,11 +211,11 @@ CMD ["npm", "start"]
 EOF
                         '''
                         
+                        sh "docker rm juice-shop"
                         // Build with the fixed Dockerfile
                         sh "docker build -f Dockerfile.fixed -t juice-shop ."
                         
-                        // Run the container with correct port mapping
-                        sh "docker run -d -p 3000:3000 --name juice-shop juice-shop"
+                        sh "docker run -d -p 3000:3000 --name juice-shop juice-shop npm run"
                         
                         // Wait for container to start
                         sleep(time: 15, unit: 'SECONDS')
