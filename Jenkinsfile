@@ -11,7 +11,7 @@ pipeline {
         CS_CLIENT_SECRET = credentials('CS_CLIENT_SECRET')
         CS_USERNAME = 'mile'
         CS_PASSWORD = credentials('CS_PASSWORD')
-        CS_REGISTRY = 'registry.crowdstrike.com' // Added missing variable
+        CS_REGISTRY = 'registry.crowdstrike.com'
         FALCON_REGION = 'us-1'
         PROJECT_PATH = 'git::https://github.com/hashicorp/terraform-guides.git'
     }
@@ -139,26 +139,41 @@ pipeline {
                         // Build the Docker image
                         sh "docker build -t juice-shop ."
                         
-                        // Run the container with a dynamically allocated port
-                        sh "docker run -d -P --name juice-shop juice-shop"
+                        // Run the container with explicit port mapping
+                        sh "docker run -d -p 3000:3000 --name juice-shop juice-shop"
                         
                         // Wait a moment for container to start
-                        sleep(time: 2, unit: 'SECONDS')
+                        sleep(time: 5, unit: 'SECONDS')
                         
-                        // Get the dynamically allocated port
-                        def dockerHostPort = sh(
-                            script: "docker port juice-shop 3000 | cut -d ':' -f 2",
+                        // Verify container is running
+                        def containerStatus = sh(
+                            script: "docker ps --filter name=juice-shop --format '{{.Status}}'",
                             returnStdout: true
                         ).trim()
-
-                        if (dockerHostPort) {
-                            echo "Juice Shop is running on http://localhost:${dockerHostPort}"
-                            env.DOCKER_HOST_PORT = dockerHostPort
+                        
+                        if (containerStatus.contains('Up')) {
+                            echo "Juice Shop is running on http://localhost:3000"
+                            env.DOCKER_HOST_PORT = "3000"
+                            
+                            // Optional: Test if the application is responding
+                            sh "sleep 10" // Give app time to fully start
+                            def healthCheck = sh(
+                                script: "curl -f http://localhost:3000 || echo 'Health check failed'",
+                                returnStdout: true
+                            ).trim()
+                            
+                            if (healthCheck.contains('Health check failed')) {
+                                echo "Warning: Application may not be fully ready yet"
+                            } else {
+                                echo "Application is responding successfully"
+                            }
                         } else {
-                            error "Failed to get Docker host port"
+                            error "Container failed to start properly"
                         }
                     } catch (Exception e) {
                         echo "Deployment failed: ${e.getMessage()}"
+                        // Show container logs for debugging
+                        sh "docker logs juice-shop || echo 'No logs available'"
                         throw e
                     }
                 }
