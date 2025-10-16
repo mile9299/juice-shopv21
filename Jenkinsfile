@@ -11,14 +11,15 @@ pipeline {
         CS_CLIENT_SECRET = credentials('CS_CLIENT_SECRET')
         CS_USERNAME = 'mile'
         CS_PASSWORD = credentials('CS_PASSWORD')
+        CS_REGISTRY = 'registry.crowdstrike.com' // Added missing variable
         FALCON_REGION = 'us-1'
         PROJECT_PATH = 'git::https://github.com/hashicorp/terraform-guides.git'
     }
-    // Added
+    
     tools {
         nodejs 'NodeJS 18.0.0'
     }
-// Added
+
     stages {
         stage('Checkout') {
             steps {
@@ -27,90 +28,84 @@ pipeline {
                 }
             }
         }
+        
         stage('Falcon Cloud Security IaC Scan') {
-    steps {
-        script {
-            def SCAN_EXIT_CODE = sh(
-                script: '''
-                    set +x
-                    # check if required env vars are set in the build set up
-
-                    scan_status=0
-                    if [[ -z "$CS_USERNAME" || -z "$CS_PASSWORD" || -z "$CS_REGISTRY" || -z "$CS_IMAGE_NAME" || -z "$CS_IMAGE_TAG" || -z "$CS_CLIENT_ID" || -z "$CS_CLIENT_SECRET" || -z "$FALCON_REGION" || -z "$PROJECT_PATH" ]]; then
-                        echo "Error: required environment variables/params are not set"
-                        exit 1
-                    else  
-                        # login to crowdstrike registry
-                        echo "Logging in to crowdstrike registry with username: $CS_USERNAME"
-                        echo "$CS_PASSWORD" | docker login --username "$CS_USERNAME" --password-stdin
-                        
-                        if [ $? -eq 0 ]; then
-                            echo "Docker login successful"
-                            #  pull the fcs container target
-                            echo "Pulling fcs container target from crowdstrike"
-                            docker pull mile/cs-fcs:1.0.0
-                            if [ $? -eq 0 ]; then
-                                echo "fcs docker container image pulled successfully"
-                                echo "=============== FCS IaC Scan Starts ==============="
-
-docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS_CLIENT_ID" --client-secret "$CS_CLIENT_SECRET" --falcon-region "$FALCON_REGION" iac scan -p "$PROJECT_PATH"
-                                scan_status=$?
-                                echo "=============== FCS IaC Scan Ends ==============="
-                            else
-                                echo "Error: failed to pull fcs docker image from crowdstrike"
-                                scan_status=1
-                            fi
-                        else
-                            echo "Error: docker login failed"
-                            scan_status=1
-                        fi
-                    fi
-                ''', returnStatus: true
-                )
-                echo "fcs-iac-scan-status: ${SCAN_EXIT_CODE}"
-                if (SCAN_EXIT_CODE == 40) {
-                    echo "Scan succeeded & vulnerabilities count are ABOVE the '--fail-on' threshold; Pipeline will be marked as Success, but this stage will be marked as Unstable"
-                    skipPublishingChecks: false
-                    currentBuild.result = 'UNSTABLE'
-                } else if (SCAN_EXIT_CODE == 0) {
-                    echo "Scan succeeded & vulnerabilities count are BELOW the '--fail-on' threshold; Pipeline will be marked as Success"
-                    skipPublishingChecks: false
-                    skipMarkingBuildUnstable: false
-                    currentBuild.result = 'Success'
-                } else {
-                    currentBuild.result = 'Failure'
-                    error 'Unexpected scan exit code: ${SCAN_EXIT_CODE}'
-                }
-                
-        }
-    }
-    post {
-        success {
-            echo 'Build succeeded!'
-        }
-        unstable {
-            echo 'Build is unstable, but still considered successful!'
-        }
-        failure {
-            echo 'Build failed!'
-        }
-        always {
-            echo "FCS IaC Scan Execution complete.."
-        }
-    }
-}
-
-
-       stage('Test with Snyk') {
             steps {
-               // dir('node_modules') {
-                    script {
-                        snykSecurity failOnIssues: false, severity: 'critical', snykInstallation: 'snyk-manual', snykTokenId: 'SNYK'
-                    }
-                //}
-            }
+                script {
+                    def SCAN_EXIT_CODE = sh(
+                        script: '''
+                            set +x
+                            # check if required env vars are set in the build set up
 
+                            scan_status=0
+                            if [[ -z "$CS_USERNAME" || -z "$CS_PASSWORD" || -z "$CS_REGISTRY" || -z "$CS_IMAGE_NAME" || -z "$CS_IMAGE_TAG" || -z "$CS_CLIENT_ID" || -z "$CS_CLIENT_SECRET" || -z "$FALCON_REGION" || -z "$PROJECT_PATH" ]]; then
+                                echo "Error: required environment variables/params are not set"
+                                exit 1
+                            else  
+                                # login to crowdstrike registry
+                                echo "Logging in to crowdstrike registry with username: $CS_USERNAME"
+                                echo "$CS_PASSWORD" | docker login --username "$CS_USERNAME" --password-stdin
+                                
+                                if [ $? -eq 0 ]; then
+                                    echo "Docker login successful"
+                                    #  pull the fcs container target
+                                    echo "Pulling fcs container target from crowdstrike"
+                                    docker pull mile/cs-fcs:1.0.0
+                                    if [ $? -eq 0 ]; then
+                                        echo "fcs docker container image pulled successfully"
+                                        echo "=============== FCS IaC Scan Starts ==============="
+
+                                        docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS_CLIENT_ID" --client-secret "$CS_CLIENT_SECRET" --falcon-region "$FALCON_REGION" iac scan -p "$PROJECT_PATH"
+                                        scan_status=$?
+                                        echo "=============== FCS IaC Scan Ends ==============="
+                                    else
+                                        echo "Error: failed to pull fcs docker image from crowdstrike"
+                                        scan_status=1
+                                    fi
+                                else
+                                    echo "Error: docker login failed"
+                                    scan_status=1
+                                fi
+                            fi
+                        ''', returnStatus: true
+                    )
+                    echo "fcs-iac-scan-status: ${SCAN_EXIT_CODE}"
+                    if (SCAN_EXIT_CODE == 40) {
+                        echo "Scan succeeded & vulnerabilities count are ABOVE the '--fail-on' threshold; Pipeline will be marked as Success, but this stage will be marked as Unstable"
+                        currentBuild.result = 'UNSTABLE'
+                    } else if (SCAN_EXIT_CODE == 0) {
+                        echo "Scan succeeded & vulnerabilities count are BELOW the '--fail-on' threshold; Pipeline will be marked as Success"
+                        currentBuild.result = 'SUCCESS'
+                    } else {
+                        currentBuild.result = 'FAILURE'
+                        error "Unexpected scan exit code: ${SCAN_EXIT_CODE}"
+                    }
+                }
+            }
+            post {
+                success {
+                    echo 'FCS IaC Scan succeeded!'
+                }
+                unstable {
+                    echo 'FCS IaC Scan is unstable, but still considered successful!'
+                }
+                failure {
+                    echo 'FCS IaC Scan failed!'
+                }
+                always {
+                    echo "FCS IaC Scan Execution complete.."
+                }
+            }
         }
+
+        stage('Test with Snyk') {
+            steps {
+                script {
+                    snykSecurity failOnIssues: false, severity: 'critical', snykInstallation: 'snyk-manual', snykTokenId: 'SNYK'
+                }
+            }
+        }
+        
         stage('Falcon Cloud Security') {
             steps {
                 withCredentials([usernameColonPassword(credentialsId: 'CRWD', variable: 'FALCON_CREDENTIALS')]) {
@@ -118,6 +113,7 @@ docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS
                 }
             }
         }
+        
         stage('Build') {
             steps {
                 script {
@@ -131,19 +127,40 @@ docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS
                 }
             }
         }
+        
         stage('Deploy') {
             steps {
                 script {
-                    // Stop and remove the container if it exists
-                    sh 'docker stop juice-shop || true'
-                    sh 'docker rm juice-shop || true'
+                    try {
+                        // Stop and remove the container if it exists
+                        sh 'docker stop juice-shop || true'
+                        sh 'docker rm juice-shop || true'
 
-                    // Build and run the Docker container with a dynamically allocated port
-                    sh "docker build -t juice-shop ."
-                    sh "DOCKER_PORT=\$(docker run -d -P --name juice-shop juice-shop)"
-                    sh "DOCKER_HOST_PORT=\$(docker port $DOCKER_PORT 3000 | cut -d ':' -f 2)"
+                        // Build the Docker image
+                        sh "docker build -t juice-shop ."
+                        
+                        // Run the container with a dynamically allocated port
+                        sh "docker run -d -P --name juice-shop juice-shop"
+                        
+                        // Wait a moment for container to start
+                        sleep(time: 2, unit: 'SECONDS')
+                        
+                        // Get the dynamically allocated port
+                        def dockerHostPort = sh(
+                            script: "docker port juice-shop 3000 | cut -d ':' -f 2",
+                            returnStdout: true
+                        ).trim()
 
-                    echo "Juice Shop is running on http://localhost:\$DOCKER_HOST_PORT"
+                        if (dockerHostPort) {
+                            echo "Juice Shop is running on http://localhost:${dockerHostPort}"
+                            env.DOCKER_HOST_PORT = dockerHostPort
+                        } else {
+                            error "Failed to get Docker host port"
+                        }
+                    } catch (Exception e) {
+                        echo "Deployment failed: ${e.getMessage()}"
+                        throw e
+                    }
                 }
             }
         }
@@ -155,6 +172,9 @@ docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$CS
         }
         failure {
             echo 'Build, test, or deployment failed!'
+        }
+        always {
+            echo 'Pipeline execution completed.'
         }
     }
 }
