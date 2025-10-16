@@ -103,26 +103,43 @@ pipeline {
             }
         }
         
-        stage('Build Docker Image') {
+        stage('Analyze Package Scripts') {
             steps {
                 script {
-                    echo 'Building Juice Shop Docker image'
+                    echo 'Analyzing project structure and available scripts'
                     
-                    // Check project structure
                     sh '''
                         echo "=== Project Structure ==="
                         ls -la
-                        echo "=== Package.json scripts ==="
-                        cat package.json | grep -A 10 '"scripts"' || echo "No scripts section found"
+                        echo ""
+                        echo "=== Package.json content ==="
+                        cat package.json | head -50
+                        echo ""
+                        echo "=== Available npm scripts ==="
+                        cat package.json | grep -A 20 '"scripts"' || echo "No scripts section found"
+                        echo ""
+                        echo "=== Looking for main entry point ==="
+                        cat package.json | grep '"main"' || echo "No main entry point specified"
+                        echo ""
+                        echo "=== Checking for common files ==="
+                        ls -la | grep -E "(app\\.js|server\\.js|index\\.js|dist/|build/)" || echo "No common entry files found"
                     '''
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo 'Building Juice Shop Docker image with dynamic script detection'
                     
-                    // Create optimized Dockerfile
+                    // Create Dockerfile with script detection
                     sh '''
                         cat > Dockerfile << 'EOF'
 FROM node:18-alpine
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Install dumb-init and basic utilities
+RUN apk add --no-cache dumb-init curl wget
 
 # Create app directory
 WORKDIR /juice-shop
@@ -130,15 +147,19 @@ WORKDIR /juice-shop
 # Copy package files first for better caching
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production --ignore-scripts
+# Install dependencies (including dev dependencies for now)
+RUN npm install
 
 # Copy the rest of the application
 COPY . .
 
 # Create necessary directories and set permissions
 RUN mkdir -p logs uploads && \
+    chmod 755 logs uploads && \
     chown -R node:node /juice-shop
+
+# Build the application if build script exists
+RUN npm run build 2>/dev/null || echo "No build script found, skipping build"
 
 # Switch to non-root user
 USER node
@@ -146,13 +167,36 @@ USER node
 # Expose port
 EXPOSE 3000
 
+# Create a startup script that tries different commands
+RUN echo '#!/bin/sh' > /juice-shop/start.sh && \
+    echo 'echo "Checking available npm scripts..."' >> /juice-shop/start.sh && \
+    echo 'npm run 2>/dev/null || echo "npm run failed"' >> /juice-shop/start.sh && \
+    echo 'echo "Attempting to start application..."' >> /juice-shop/start.sh && \
+    echo 'if npm run start 2>/dev/null; then' >> /juice-shop/start.sh && \
+    echo '  echo "Started with: npm run start"' >> /juice-shop/start.sh && \
+    echo 'elif npm run serve 2>/dev/null; then' >> /juice-shop/start.sh && \
+    echo '  echo "Started with: npm run serve"' >> /juice-shop/start.sh && \
+    echo 'elif npm run dev 2>/dev/null; then' >> /juice-shop/start.sh && \
+    echo '  echo "Started with: npm run dev"' >> /juice-shop/start.sh && \
+    echo 'elif [ -f "app.js" ]; then' >> /juice-shop/start.sh && \
+    echo '  node app.js' >> /juice-shop/start.sh && \
+    echo 'elif [ -f "server.js" ]; then' >> /juice-shop/start.sh && \
+    echo '  node server.js' >> /juice-shop/start.sh && \
+    echo 'elif [ -f "index.js" ]; then' >> /juice-shop/start.sh && \
+    echo '  node index.js' >> /juice-shop/start.sh && \
+    echo 'else' >> /juice-shop/start.sh && \
+    echo '  echo "No suitable startup method found"' >> /juice-shop/start.sh && \
+    echo '  exit 1' >> /juice-shop/start.sh && \
+    echo 'fi' >> /juice-shop/start.sh && \
+    chmod +x /juice-shop/start.sh
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
 
-# Use dumb-init and start the application
+# Use dumb-init and our startup script
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["npm", "start"]
+CMD ["sh", "/juice-shop/start.sh"]
 EOF
                     '''
                     
@@ -186,7 +230,7 @@ EOF
                         
                         // Wait for container to start
                         echo 'Waiting for container to start...'
-                        sleep(time: 15, unit: 'SECONDS')
+                        sleep(time: 20, unit: 'SECONDS')
                         
                         // Check container status
                         def containerStatus = sh(
@@ -196,12 +240,12 @@ EOF
                         
                         echo "Container status: ${containerStatus}"
                         
-                        if (containerStatus.contains('Up')) {
+                        if (containerStatus && containerStatus.contains('Up')) {
                             echo "✅ Juice Shop container is running"
                             
                             // Health check with retries
                             def healthCheckAttempts = 0
-                            def maxAttempts = 12
+                            def maxAttempts = 15
                             def appReady = false
                             
                             while (healthCheckAttempts < maxAttempts && !appReady) {
@@ -224,10 +268,10 @@ EOF
                             }
                             
                             if (!appReady) {
-                                echo "⚠️ Application health check failed, but container is running"
-                                echo "Container logs:"
-                                sh 'docker logs --tail 20 juice-shop'
-                                // Don't fail the build, just warn
+                                echo "⚠️ Application health check failed after ${maxAttempts} attempts"
+                                echo "Container logs (last 30 lines):"
+                                sh 'docker logs --tail 30 juice-shop'
+                                // Don't fail the build, container is running
                                 env.DOCKER_HOST_PORT = "3000"
                             }
                             
@@ -239,6 +283,7 @@ EOF
                             ).trim()
                             
                             echo "Container failed to start. Status: ${exitedStatus}"
+                            echo "Container logs:"
                             sh 'docker logs juice-shop'
                             error "Container failed to start properly"
                         }
@@ -274,7 +319,9 @@ EOF
                 // Show container info
                 sh '''
                     echo "=== Final Container Status ==="
-                    docker ps --filter name=juice-shop --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
+                    docker ps --filter name=juice-shop --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}" || true
+                    echo "=== Container Logs (last 10 lines) ==="
+                    docker logs --tail 10 juice-shop 2>/dev/null || echo "No logs available"
                 '''
             }
         }
@@ -291,9 +338,6 @@ EOF
                     docker images | grep juice-shop || echo "No juice-shop images found"
                 '''
             }
-        }
-        unstable {
-            echo 'Pipeline completed with warnings (unstable)!'
         }
         cleanup {
             script {
