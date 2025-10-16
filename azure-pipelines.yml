@@ -21,7 +21,7 @@ variables:
   - name: FALCON_REGION
     value: 'us-1'
   - name: PROJECT_PATH
-    value: 'git::https://github.com/aws-cloudformation/aws-cloudformation-templates.git'
+    value: 'git::https://github.com/ine-labs/AWSGoat.git'
 
 stages:
 - stage: Build
