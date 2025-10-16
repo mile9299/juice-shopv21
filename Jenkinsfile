@@ -211,7 +211,6 @@ CMD ["npm", "start"]
 EOF
                         '''
                         
-                        sh "docker rm juice-shop"
                         // Build with the fixed Dockerfile
                         sh "docker build -f Dockerfile.fixed -t juice-shop ."
                         
