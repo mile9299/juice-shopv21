@@ -140,7 +140,7 @@ pipeline {
                         sh "docker build -t juice-shop ."
                         
                         // Run the container with explicit port mapping
-                        sh "docker run -d -p 3000:3000 --name juice-shop juice-shop"
+                        sh "docker run -d -p 3001:3001 --name juice-shop juice-shop"
                         
                         // Wait a moment for container to start
                         sleep(time: 5, unit: 'SECONDS')
@@ -152,13 +152,13 @@ pipeline {
                         ).trim()
                         
                         if (containerStatus.contains('Up')) {
-                            echo "Juice Shop is running on http://localhost:3000"
-                            env.DOCKER_HOST_PORT = "3000"
+                            echo "Juice Shop is running on http://localhost:3001"
+                            env.DOCKER_HOST_PORT = "3001"
                             
                             // Optional: Test if the application is responding
                             sh "sleep 10" // Give app time to fully start
                             def healthCheck = sh(
-                                script: "curl -f http://localhost:3000 || echo 'Health check failed'",
+                                script: "curl -f http://localhost:3001 || echo 'Health check failed'",
                                 returnStdout: true
                             ).trim()
                             
