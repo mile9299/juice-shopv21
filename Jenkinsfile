@@ -113,7 +113,6 @@ pipeline {
                     }
                 }
             }
-        }
         
         stage('Build') {
             steps {
