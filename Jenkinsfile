@@ -214,7 +214,7 @@ EOF
                         // Build with the fixed Dockerfile
                         sh "docker build -f Dockerfile.fixed -t juice-shop ."
                         
-                        sh "docker run -d -p 3000:3000 --name juice-shop juice-shop npm run"
+                        sh "docker run -d -p 3000:3000 --name juice-shop jbkimminich/juice-shop npm run"
                         
                         // Wait for container to start
                         sleep(time: 15, unit: 'SECONDS')
