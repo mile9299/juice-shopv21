@@ -49,7 +49,7 @@ stages:
         targetType: 'inline'
         script: |
           set +x
-          # check if required env vars are set in the build set up
+          # check if required env vars are set in the build set-up
           
           scan_status=0
           if [[ -z "$(CS_USERNAME)" || -z "$(CS_PASSWORD)" || -z "$(CS_REGISTRY)" || -z "$(CS_IMAGE_NAME)" || -z "$(CS_IMAGE_TAG)" || -z "$(FALCON_CLIENT_ID)" || -z "$(FALCON_CLIENT_SECRET)" || -z "$(FALCON_REGION)" || -z "$(PROJECT_PATH)" ]]; then
