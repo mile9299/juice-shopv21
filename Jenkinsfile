@@ -211,7 +211,7 @@ EOF
         stage('Falcon Cloud Security Image Scan') {
             steps {
                 withCredentials([usernameColonPassword(credentialsId: 'CRWD', variable: 'FALCON_CREDENTIALS')]) {
-                    crowdStrikeSecurity imageName: 'juice-shop', imageTag: 'latest', enforce: false, timeout: 60
+                    crowdStrikeSecurity imageName: 'juice-shop', imageTag: 'latest', enforce: true, timeout: 60
                 }
             }
         }
