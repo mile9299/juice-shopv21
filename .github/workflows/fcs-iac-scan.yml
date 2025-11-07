@@ -26,7 +26,7 @@ jobs:
           scan_type: 'iac'                                   # iac or image
           path: 'git::https://github.com/ine-labs/AWSGoat.git'                           # path to IaC (file/dir/git::repo)
           report_formats: 'sarif'                            # request SARIF for GH Code Scanning
-          output_path: "$(Build.SourcesDirectory)/results.sarif"                       # must be a directory for IaC scan
+          output_path: "./fcs-results/fcs-iac.sarif"                       # must be a directory for IaC scan
           fail_on: 'critical=1,high=1'                       # fail job if criteria met (customize)
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
@@ -35,4 +35,4 @@ jobs:
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: $(Build.SourcesDirectory)/results.sarif   # adjust if FCS writes a different filename
+          sarif_file: ./fcs-results/fcs-iac.sarif   # adjust if FCS writes a different filename
