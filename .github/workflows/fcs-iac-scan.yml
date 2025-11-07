@@ -28,14 +28,14 @@ jobs:
           falcon_region: 'us-1'                              # set the region for your tenant
           scan_type: 'iac'                                   # iac or image
           path: 'git::https://github.com/ine-labs/AWSGoat.git'                           # path to IaC (file/dir/git::repo)
-          report_formats: 'json,sarif'                            # request SARIF for GH Code Scanning
-          output_path: "./fcs-results/fcs-iac.sarif"                       # must be a directory for IaC scan
+          report_formats: 'json'                            # request SARIF for GH Code Scanning
+          output_path: "./fcs-results/fcs-iac.json"                       # must be a directory for IaC scan
           fail_on: 'critical=1,high=1'                       # fail job if criteria met (customize)
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
 
       - name: Upload SARIF to GitHub Code Scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-json@v3
         with:
-          sarif_file: ./fcs-results/fcs-iac.sarif   # adjust if FCS writes a different filename
+          sarif_file: ./fcs-results/fcs-iac.json   # adjust if FCS writes a different filename
