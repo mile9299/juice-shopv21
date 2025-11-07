@@ -6,8 +6,8 @@ on:
       - main
 
 jobs:
-  fcs-iac-scan:
-    name: Run FCS IaC scan
+  fcs-scan-iac:
+    name: FCS IaC Scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -28,15 +28,19 @@ jobs:
           fail_on: 'critical=1,high=1'
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
-  fcs-image-scan:
-    name: Run FCS Image scan
+
+  fcs-scan-image:
+    name: FCS Image Scan
     runs-on: ubuntu-latest
+    needs: fcs-scan-iac
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: Scan Container Image
+        id: fcs_image_scan
         uses: crowdstrike/fcs-action@v2.0.2
         with:
           falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
@@ -48,18 +52,14 @@ jobs:
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
 
-      - name: Continue pipeline to push image, etc
-        if: steps.fcs_scan.outputs.exit-code == '0'
-        run: |
-          echo "FCS scans passed, continue pipeline..."
-
   deploy-juice-shop:
+    name: Deploy to AKS
     runs-on: ubuntu-latest
+    needs: fcs-scan-image
     env:
       AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
       AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
       K8S_NAMESPACE: apps
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
