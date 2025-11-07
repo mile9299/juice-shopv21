@@ -28,6 +28,22 @@ jobs:
           fail_on: 'critical=1,high=1'                       # fail job if criteria met (customize)
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+      
+      - name: Scan Container Image
+        uses: crowdstrike/fcs-action@v2.0.2
+        with:
+          falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
+          falcon_region: 'us-1'
+          scan_type: image
+          image: nginx:latest
+          output_path: './image-scan-results/'
+          report_formats: json
+        env:
+          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+
+      - name: Continue piepline to push image, etc
+        if: steps.fcs.outputs.exit-code = 0
+          ...
   deploy:
     runs-on: ubuntu-latest
     env:
