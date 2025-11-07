@@ -10,7 +10,7 @@ jobs:
     env:
       AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
       AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
-      K8S_NAMESPACE: default
+      K8S_NAMESPACE: apps
 
     steps:
       - name: Checkout repo
