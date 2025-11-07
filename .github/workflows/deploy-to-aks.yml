@@ -7,7 +7,7 @@ on:
 
 jobs:
   fcs-scan-iac:
-    name: Falcon Cloud Security Scan
+    name: Falcon Cloud Security IAC Scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
