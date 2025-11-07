@@ -28,7 +28,7 @@ jobs:
           falcon_region: 'us-1'                              # set the region for your tenant
           scan_type: 'iac'                                   # iac or image
           path: 'git::https://github.com/ine-labs/AWSGoat.git'                           # path to IaC (file/dir/git::repo)
-          report_formats: 'sarif'                            # request SARIF for GH Code Scanning
+          report_formats: 'json,sarif'                            # request SARIF for GH Code Scanning
           output_path: "./fcs-results/fcs-iac.sarif"                       # must be a directory for IaC scan
           fail_on: 'critical=1,high=1'                       # fail job if criteria met (customize)
         env:
