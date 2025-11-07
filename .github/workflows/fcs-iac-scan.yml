@@ -18,13 +18,13 @@ jobs:
 
       - name: Run FCS IaC Scan
         id: fcs_scan
-        uses: crowdstrike/fcs-action@v2.0.2
+        uses: mile/cs-fcs@v2.1.0
         with:
           # Either supply the client id directly or reference a repo variable (recommended):
           falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}   # or ${{ vars.FALCON_CLIENT_ID }}
           falcon_region: 'us-1'                              # set the region for your tenant
           scan_type: 'iac'                                   # iac or image
-          path: './infrastructure'                           # path to IaC (file/dir/git::repo)
+          path: 'git::https://github.com/ine-labs/AWSGoat.git'                           # path to IaC (file/dir/git::repo)
           report_formats: 'sarif'                            # request SARIF for GH Code Scanning
           output_path: './fcs-results'                       # must be a directory for IaC scan
           fail_on: 'critical=1,high=1'                       # fail job if criteria met (customize)
