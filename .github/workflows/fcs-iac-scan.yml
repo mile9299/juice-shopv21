@@ -1,31 +1,33 @@
-
 name: FCS IaC Scan
 
 on:
   push:
     branches: [ main ]
   pull_request:
-
-permissions:
-  contents: read
-  security-events: write
+    branches: [ main ]
 
 jobs:
-  iac-scan:
+  fcs-iac-scan:
+    name: Run FCS IaC scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: FCS IaC Scan
+      - name: Run FCS IaC Scan
+        id: fcs_scan
         uses: crowdstrike/fcs-action@v2.0.2
         with:
-          falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
-          falcon_region: 'us-1'
-          scan_type: 'iac'
-          path: './infrastructure'
-          report_formats: 'json,sarif'
-          output_path: './fcs-results'
-          sarif_report_name: 'fcs-iac.sarif'
+          # Either supply the client id directly or reference a repo variable (recommended):
+          falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}   # or ${{ vars.FALCON_CLIENT_ID }}
+          falcon_region: 'us-1'                              # set the region for your tenant
+          scan_type: 'iac'                                   # iac or image
+          path: 'git::https://github.com/ine-labs/AWSGoat.git'                           # path to IaC (file/dir/git::repo)
+          report_formats: 'sarif'                            # request SARIF for GH Code Scanning
+          output_path: "$(Build.SourcesDirectory)/results.sarif"                       # must be a directory for IaC scan
+          fail_on: 'critical=1,high=1'                       # fail job if criteria met (customize)
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
 
@@ -33,4 +35,4 @@ jobs:
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: ./fcs-results/fcs-iac.sarif
+          sarif_file: $(Build.SourcesDirectory)/results.sarif   # adjust if FCS writes a different filename
