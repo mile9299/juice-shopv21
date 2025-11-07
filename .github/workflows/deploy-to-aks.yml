@@ -5,6 +5,29 @@ on:
       - main
 
 jobs:
+  fcs-iac-scan:
+    name: Run FCS IaC scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run FCS IaC Scan
+        id: fcs_scan
+        uses: crowdstrike/fcs-action@v2.0.2
+        with:
+          # Either supply the client id directly or reference a repo variable (recommended):
+          falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}   # or ${{ vars.FALCON_CLIENT_ID }}
+          falcon_region: 'us-1'                              # set the region for your tenant
+          scan_type: 'iac'                                   # iac or image
+          path: 'git::https://github.com/mile9299/IAC_Examples.git'                           # path to IaC (file/dir/git::repo)
+          report_formats: 'json'                            # request SARIF for GH Code Scanning
+          output_path: "./fcs-results/fcs-iac.json"                       # must be a directory for IaC scan
+          fail_on: 'critical=1,high=1'                       # fail job if criteria met (customize)
+        env:
+          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
   deploy:
     runs-on: ubuntu-latest
     env:
