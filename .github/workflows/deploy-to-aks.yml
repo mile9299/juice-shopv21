@@ -35,9 +35,9 @@ jobs:
           falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
           falcon_region: 'us-1'
           scan_type: 'image'
-          image: 'nginx:latest'
-          output_path: './image-scan-results/'
+          image: 'scorpas/spooky'
           report_formats: 'json'
+          output_path: './image-scan-results/image-scan-results.json'
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
 
