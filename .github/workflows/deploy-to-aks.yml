@@ -1,4 +1,5 @@
 name: Deploy Juice Shop to AKS
+
 on:
   push:
     branches:
@@ -18,32 +19,33 @@ jobs:
         id: fcs_scan
         uses: crowdstrike/fcs-action@v2.0.2
         with:
-          # Either supply the client id directly or reference a repo variable (recommended):
-          falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}   # or ${{ vars.FALCON_CLIENT_ID }}
-          falcon_region: 'us-1'                              # set the region for your tenant
-          scan_type: 'iac'                                   # iac or image
-          path: 'git::https://github.com/mile9299/IAC_Examples.git'                           # path to IaC (file/dir/git::repo)
-          report_formats: 'json'                            # request SARIF for GH Code Scanning
-          output_path: "./fcs-results/fcs-iac.json"                       # must be a directory for IaC scan
-          fail_on: 'critical=1,high=1'                       # fail job if criteria met (customize)
+          falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
+          falcon_region: 'us-1'
+          scan_type: 'iac'
+          path: 'git::https://github.com/mile9299/IAC_Examples.git'
+          report_formats: 'json'
+          output_path: './fcs-results/fcs-iac.json'
+          fail_on: 'critical=1,high=1'
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
-      
+
       - name: Scan Container Image
         uses: crowdstrike/fcs-action@v2.0.2
         with:
           falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
           falcon_region: 'us-1'
-          scan_type: image
-          image: nginx:latest
+          scan_type: 'image'
+          image: 'nginx:latest'
           output_path: './image-scan-results/'
-          report_formats: json
+          report_formats: 'json'
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
 
-      - name: Continue piepline to push image, etc
-        if: steps.fcs.outputs.exit-code = 0
-          ...
+      - name: Continue pipeline to push image, etc
+        if: steps.fcs_scan.outputs.exit-code == '0'
+        run: |
+          echo "FCS scans passed, continue pipeline..."
+
   deploy:
     runs-on: ubuntu-latest
     env:
@@ -63,7 +65,7 @@ jobs:
       - name: Set AKS context
         uses: azure/aks-set-context@v1
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}   # <-- add this
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
           resource-group: ${{ env.AZURE_RESOURCE_GROUP }}
           cluster-name: ${{ env.AKS_CLUSTER_NAME }}
 
