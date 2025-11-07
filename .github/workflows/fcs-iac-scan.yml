@@ -4,30 +4,29 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
+
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
-  fcs-iac-scan:
-    name: Run FCS IaC scan
+  iac-scan:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Run FCS IaC Scan
-        id: fcs_scan
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: CrowdStrike FCS IaC Scan
+        id: fcs-iac
         uses: crowdstrike/fcs-action@v2.0.2
         with:
-          # Either supply the client id directly or reference a repo variable (recommended):
-          falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}   # or ${{ vars.FALCON_CLIENT_ID }}
-          falcon_region: 'us-1'                              # set the region for your tenant
-          scan_type: 'iac'                                   # iac or image
-          path: 'git::https://github.com/ine-labs/AWSGoat.git'                           # path to IaC (file/dir/git::repo)
-          report_formats: 'sarif'                            # request SARIF for GH Code Scanning
-          output_path: 'fcs-results/results.sarif'                       # must be a directory for IaC scan
-          fail_on: 'critical=1,high=1'                       # fail job if criteria met (customize)
+          falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
+          falcon_region: 'us-1'
+          scan_type: 'iac'
+          path: './infrastructure'     # ← Update to YOUR IaC path
+          report_formats: 'sarif'      # ← IMPORTANT: creates REAL SARIF
+          output_path: './fcs-results' # ← FCS creates this at runtime
+          sarif_report_name: 'fcs-iac.sarif'
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
 
@@ -35,4 +34,4 @@ jobs:
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: fcs-results/results.sarif   # adjust if FCS writes a different filename
+          sarif_file: ./fcs-results/fcs-iac.sarif
