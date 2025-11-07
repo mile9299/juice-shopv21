@@ -19,7 +19,7 @@ jobs:
         uses: crowdstrike/fcs-action@v2.0.2
         with:
           # Either supply the client id directly or reference a repo variable (recommended):
-          falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}   # or ${{ vars.FALCON_CLIENT_ID }}
+          falcon_client_id: ${{ var.FALCON_CLIENT_ID }}   # or ${{ vars.FALCON_CLIENT_ID }}
           falcon_region: 'us-1'                              # set the region for your tenant
           scan_type: 'iac'                                   # iac or image
           path: 'git::https://github.com/mile9299/IAC_Examples.git'                           # path to IaC (file/dir/git::repo)
