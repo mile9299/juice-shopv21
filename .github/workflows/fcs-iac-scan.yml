@@ -1,4 +1,7 @@
 name: FCS IaC Scan
+permissions:
+  contents: read
+  security-events: write
 
 on:
   push:
