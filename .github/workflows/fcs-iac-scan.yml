@@ -1,3 +1,4 @@
+
 name: FCS IaC Scan
 
 on:
@@ -12,20 +13,18 @@ permissions:
 jobs:
   iac-scan:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: CrowdStrike FCS IaC Scan
-        id: fcs-iac
+      - name: FCS IaC Scan
         uses: crowdstrike/fcs-action@v2.0.2
         with:
           falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
           falcon_region: 'us-1'
           scan_type: 'iac'
-          path: './infrastructure'     # ← Update to YOUR IaC path
-          report_formats: 'sarif'      # ← IMPORTANT: creates REAL SARIF
-          output_path: './fcs-results' # ← FCS creates this at runtime
+          path: './infrastructure'
+          report_formats: 'json,sarif'
+          output_path: './fcs-results'
           sarif_report_name: 'fcs-iac.sarif'
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
