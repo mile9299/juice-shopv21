@@ -32,7 +32,7 @@ jobs:
       - name: Scan Container Image
         uses: crowdstrike/fcs-action@v2.0.2
         with:
-          falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
+          falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
           falcon_region: 'us-1'
           scan_type: 'image'
           image: 'nginx:latest'
