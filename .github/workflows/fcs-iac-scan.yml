@@ -35,4 +35,4 @@ jobs:
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: ./fcs-results/results.sarif   # adjust if FCS writes a different filename
+          sarif_file: $(Build.SourcesDirectory)/results.sarif   # adjust if FCS writes a different filename
