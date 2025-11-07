@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: juice-shop
+spec:
+  type: LoadBalancer          # for public access; use ClusterIP if internal
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
+  selector:
+    app: juice-shop
