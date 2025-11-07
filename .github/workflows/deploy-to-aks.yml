@@ -7,7 +7,7 @@ on:
 
 jobs:
   fcs-scan-iac:
-    name: FCS Falcon Cloud Security Scan
+    name: Falcon Cloud Security Scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -15,7 +15,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run Falcon Cloud Security IaC Scan
+      - name: Falcon Cloud Security IaC Scan
         id: fcs_scan
         uses: crowdstrike/fcs-action@v2.0.2
         with:
@@ -31,7 +31,7 @@ jobs:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
 
   fcs-scan-image:
-    name: Run Falcon Cloud Security Image Scan
+    name: Falcon Cloud Security Image Scan
     runs-on: ubuntu-latest
     needs: fcs-scan-iac
     steps:
