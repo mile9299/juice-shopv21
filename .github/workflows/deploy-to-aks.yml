@@ -32,14 +32,13 @@ jobs:
     name: Scan Container Image
     uses: crowdstrike/fcs-action@v2.0.2
     with:
-    falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
-    falcon_region: 'us-1'
-    scan_type: image
-    image: scorpas/spooky
-    output_path: './fcs-results/'
-    report_formats: json
-  env:
-    FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }
+      falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
+      falcon_client_secret: ${{ secrets.FALCON_CLIENT_SECRET }
+      falcon_region: 'us-1'
+      scan_type: image
+      image: scorpas/spooky
+      output_path: './fcs-results/'
+      report_formats: json
   deploy:
     runs-on: ubuntu-latest
     env:
