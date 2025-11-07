@@ -1,0 +1,43 @@
+name: Deploy Juice Shop to AKS
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+      AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
+      K8S_NAMESPACE: default
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v1
+        with:
+          resource-group: ${{ env.AZURE_RESOURCE_GROUP }}
+          cluster-name: ${{ env.AKS_CLUSTER_NAME }}
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Show kubectl cluster info
+        run: kubectl cluster-info
+
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -n $K8S_NAMESPACE -f k8s/deployment.yaml
+          kubectl apply -n $K8S_NAMESPACE -f k8s/service.yaml
+
+      - name: Wait for deployment rollout
+        run: |
+          kubectl rollout status deployment/juice-shop -n $K8S_NAMESPACE --timeout=120s
