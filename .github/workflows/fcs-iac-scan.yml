@@ -18,7 +18,7 @@ jobs:
 
       - name: Run FCS IaC Scan
         id: fcs_scan
-        uses: mile/cs-fcs@v2.1.0
+        uses: crowdstrike/fcs-action@2.1.0
         with:
           # Either supply the client id directly or reference a repo variable (recommended):
           falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}   # or ${{ vars.FALCON_CLIENT_ID }}
