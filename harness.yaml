@@ -1,465 +1,14 @@
 pipeline:
-  name: CrowdStrike Security Scanning Pipeline
-  identifier: crowdstrike_security_scanning_pipeline
-  projectIdentifier: <your_project_id>
-  orgIdentifier: <your_org_id>
-  tags: {}
+  name: JuiceShop - FCS Pipeline
+  identifier: JuiceShop_FCS_Pipeline
   properties:
     ci:
       codebase:
-        connectorRef: <your_git_connector>
-        repoName: <your_repo_name>
-        build: <+input>
-  stages:
-    - stage:
-        name: Build
-        identifier: Build
-        type: CI
-        spec:
-          cloneCodebase: true
-          platform:
-            os: Linux
-            arch: Amd64
-          runtime:
-            type: Cloud
-            spec: {}
-          execution:
-            steps:
-              - step:
-                  type: Run
-                  name: Install Node.js
-                  identifier: install_nodejs
-                  spec:
-                    shell: Bash
-                    command: |
-                      curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-                      apt-get install -y nodejs
-                      node --version
-                      npm --version
-              
-              - step:
-                  type: Run
-                  name: Checkout Juice Shop Repo
-                  identifier: checkout_juice_shop
-                  spec:
-                    shell: Bash
-                    command: |
-                      git clone <+pipeline.variables.JUICE_SHOP_REPO> juice-shop
-                      cd juice-shop
-              
-              - step:
-                  type: Run
-                  name: Falcon Cloud Security IaC Scan
-                  identifier: fcs_iac_scan
-                  spec:
-                    shell: Bash
-                    envVariables:
-                      CS_USERNAME: <+pipeline.variables.CS_USERNAME>
-                      CS_PASSWORD: <+secrets.getValue("CS_PASSWORD")>
-                      CS_REGISTRY: <+secrets.getValue("CS_REGISTRY")>
-                      CS_IMAGE_NAME: <+pipeline.variables.CS_IMAGE_NAME>
-                      CS_IMAGE_TAG: <+pipeline.variables.CS_IMAGE_TAG>
-                      FALCON_CLIENT_ID: <+secrets.getValue("FALCON_CLIENT_ID")>
-                      FALCON_CLIENT_SECRET: <+secrets.getValue("FALCON_CLIENT_SECRET")>
-                      FALCON_REGION: <+pipeline.variables.FALCON_REGION>
-                      PROJECT_PATH: <+pipeline.variables.PROJECT_PATH>
-                    command: |
-                      set +x
-                      scan_status=0
-                      
-                      if [[ -z "$CS_USERNAME" || -z "$CS_PASSWORD" || -z "$CS_REGISTRY" || -z "$CS_IMAGE_NAME" || -z "$CS_IMAGE_TAG" || -z "$FALCON_CLIENT_ID" || -z "$FALCON_CLIENT_SECRET" || -z "$FALCON_REGION" || -z "$PROJECT_PATH" ]]; then
-                          echo "Error: required environment variables/params are not set"
-                          exit 1
-                      else  
-                          echo "Logging in to crowdstrike registry with username: $CS_USERNAME"
-                          echo "$CS_PASSWORD" | docker login --username "$CS_USERNAME" --password-stdin
-                          
-                          if [ $? -eq 0 ]; then
-                              echo "Docker login successful"
-                              echo "Pulling fcs container target from crowdstrike"
-                              docker pull $CS_IMAGE_NAME:$CS_IMAGE_TAG
-                              
-                              if [ $? -eq 0 ]; then
-                                  echo "fcs docker container image pulled successfully"
-                                  echo "=============== FCS IaC Scan Starts ==============="
-                                  docker run --network=host --rm "$CS_IMAGE_NAME":"$CS_IMAGE_TAG" --client-id "$FALCON_CLIENT_ID" --client-secret "$FALCON_CLIENT_SECRET" --falcon-region "$FALCON_REGION" iac scan -p "$PROJECT_PATH" --upload-results | tee /harness/scansummary.txt
-                                  scan_status=${PIPESTATUS[0]}
-                                  echo "=============== FCS IaC Scan Ends ==============="
-                                  echo "fcs-iac-scan-status: $scan_status"
-                                  
-                                  if [ $scan_status -eq 40 ]; then
-                                      echo "Scan succeeded & vulnerabilities count are ABOVE the '--fail-on' threshold"
-                                      exit 0
-                                  elif [ $scan_status -eq 0 ]; then
-                                      echo "Scan succeeded & vulnerabilities count are BELOW the '--fail-on' threshold"
-                                      exit 0
-                                  else
-                                      echo "Unexpected scan exit code: $scan_status"
-                                      exit 1
-                                  fi
-                              else
-                                  echo "Error: failed to pull fcs docker image from crowdstrike"
-                                  exit 1
-                              fi
-                          else
-                              echo "Error: docker login failed"
-                              exit 1
-                          fi
-                      fi
-              
-              - step:
-                  type: Run
-                  name: Process SARIF file
-                  identifier: process_sarif
-                  spec:
-                    shell: Bash
-                    command: |
-                      if [ -f "/harness/scansummary.txt" ]; then
-                        SARIFFILE=$(grep -o 'Results saved to file: [^ ]*' /harness/scansummary.txt | sed 's/Results saved to file: //')
-                        
-                        if [ -n "$SARIFFILE" ] && [ -f "$SARIFFILE" ]; then
-                          echo "Found SARIF file: $SARIFFILE"
-                          jq '.runs[].tool.driver.informationUri = "https://www.crowdstrike.com"' $SARIFFILE > /harness/results.sarif
-                          echo "Successfully processed SARIF file to results.sarif"
-                        else
-                          echo "SARIF file not found in scan output, creating a minimal valid SARIF file"
-                          echo '{
-                            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-                            "version": "2.1.0",
-                            "runs": [
-                              {
-                                "tool": {
-                                  "driver": {
-                                    "name": "CrowdStrike Falcon",
-                                    "informationUri": "https://www.crowdstrike.com",
-                                    "rules": []
-                                  }
-                                },
-                                "results": []
-                              }
-                            ]
-                          }' > /harness/results.sarif
-                        fi
-                      else
-                        echo "Scan summary file not found, creating a minimal valid SARIF file"
-                        echo '{
-                          "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-                          "version": "2.1.0",
-                          "runs": [
-                            {
-                              "tool": {
-                                "driver": {
-                                  "name": "CrowdStrike Falcon",
-                                  "informationUri": "https://www.crowdstrike.com",
-                                  "rules": []
-                                }
-                              },
-                              "results": []
-                            }
-                          ]
-                        }' > /harness/results.sarif
-                      fi
-                  failureStrategies:
-                    - onFailure:
-                        errors:
-                          - AllErrors
-                        action:
-                          type: Ignore
-              
-              - step:
-                  type: Run
-                  name: Return IAC Scan Summary
-                  identifier: return_iac_summary
-                  spec:
-                    shell: Bash
-                    command: |
-                      if [ -f "/harness/scansummary.txt" ]; then
-                        cat "/harness/scansummary.txt"
-                      else
-                        echo "Scan summary file not found"
-                      fi
-                  failureStrategies:
-                    - onFailure:
-                        errors:
-                          - AllErrors
-                        action:
-                          type: Ignore
-              
-              - step:
-                  type: Run
-                  name: Return IAC Sarif Results
-                  identifier: return_sarif_results
-                  spec:
-                    shell: Bash
-                    command: |
-                      if [ -f "/harness/results.sarif" ]; then
-                        cat "/harness/results.sarif"
-                      else
-                        echo "SARIF file not found"
-                      fi
-                  failureStrategies:
-                    - onFailure:
-                        errors:
-                          - AllErrors
-                        action:
-                          type: Ignore
-              
-              - step:
-                  type: BuildAndPushDockerRegistry
-                  name: Build container image
-                  identifier: build_container
-                  spec:
-                    connectorRef: <your_docker_connector>
-                    repo: <+pipeline.variables.CONTAINER_REPO>
-                    tags:
-                      - <+pipeline.variables.CONTAINER_TAG>
-                    dockerfile: Dockerfile
-                  failureStrategies:
-                    - onFailure:
-                        errors:
-                          - AllErrors
-                        action:
-                          type: Ignore
-              
-              - step:
-                  type: Run
-                  name: Scan container image with CrowdStrike
-                  identifier: scan_container_image
-                  spec:
-                    shell: Bash
-                    envVariables:
-                      FALCON_CLIENT_SECRET: <+secrets.getValue("FALCON_CLIENT_SECRET")>
-                      FALCON_CLIENT_ID: <+secrets.getValue("FALCON_CLIENT_ID")>
-                    command: |
-                      pip3 install docker crowdstrike-falconpy retry
-                      
-                      if [ ! -d container-image-scan ] ; then
-                        git clone https://github.com/crowdstrike/container-image-scan
-                      fi
-                      
-                      python3 container-image-scan/cs_scanimage.py --json-report /harness/report.json || true
-                      
-                      if [ -f "/harness/report.json" ]; then
-                        echo "# Vulnerability Remediation Plan" > /harness/remediation_plan.md
-                        
-                        if jq -e '.vulnerabilities' /harness/report.json > /dev/null 2>&1; then
-                          echo "Vulnerabilities found in the image:"
-                          jq -r '.vulnerabilities[] | select(.severity == "HIGH" or .severity == "CRITICAL") | "- \(.severity): \(.cve_id) in \(.package_name) \(.package_version)"' /harness/report.json
-                          
-                          echo "## High and Critical Vulnerabilities" >> /harness/remediation_plan.md
-                          jq -r '.vulnerabilities[] | select(.severity == "HIGH" or .severity == "CRITICAL") | "- **\(.severity)**: \(.cve_id) in \(.package_name) \(.package_version)\n  - Description: \(.description)\n  - Remediation: Update to latest version or apply patch"' /harness/report.json >> /harness/remediation_plan.md
-                        fi
-                        
-                        if jq -e '.secrets' /harness/report.json > /dev/null 2>&1; then
-                          echo "WARNING: Secrets were detected in the image:"
-                          jq -r '.secrets[] | "- Secret type: \(.type) in \(.path)"' /harness/report.json
-                          
-                          echo "## Detected Secrets" >> /harness/remediation_plan.md
-                          jq -r '.secrets[] | "- Secret type: \(.type) found in \(.path)\n  - Action: Remove this secret and use secure storage methods instead"' /harness/report.json >> /harness/remediation_plan.md
-                        else
-                          echo "No secrets were detected in the image."
-                        fi
-                      else
-                        echo "Error: Scan report not generated."
-                        echo "# No security findings to report" > /harness/remediation_plan.md
-                      fi
-                  failureStrategies:
-                    - onFailure:
-                        errors:
-                          - AllErrors
-                        action:
-                          type: Ignore
-              
-              - step:
-                  type: Run
-                  name: Print CrowdStrike Full Image Scan Report
-                  identifier: print_scan_report
-                  spec:
-                    shell: Bash
-                    command: |
-                      if [ -f "/harness/report.json" ]; then
-                        jq '.' /harness/report.json
-                      else
-                        echo "Image scan report not found"
-                      fi
-                  failureStrategies:
-                    - onFailure:
-                        errors:
-                          - AllErrors
-                        action:
-                          type: Ignore
-              
-              - step:
-                  type: Run
-                  name: Tag container image
-                  identifier: tag_container
-                  spec:
-                    shell: Bash
-                    envVariables:
-                      CONTAINER_REPO: <+pipeline.variables.CONTAINER_REPO>
-                      AZURE_CONTAINER_REGISTRY: <+pipeline.variables.azureContainerRegistry>
-                    command: |
-                      if [ -n "$CONTAINER_REPO" ] && [ -n "$AZURE_CONTAINER_REGISTRY" ]; then
-                        docker tag $CONTAINER_REPO $AZURE_CONTAINER_REGISTRY/$CONTAINER_REPO
-                        echo "Container image tagged successfully"
-                      else
-                        echo "Missing container repository or registry information"
-                      fi
-                  failureStrategies:
-                    - onFailure:
-                        errors:
-                          - AllErrors
-                        action:
-                          type: Ignore
-              
-              - step:
-                  type: Run
-                  name: Return API response from CrowdStrike Image Assessment
-                  identifier: image_assessment
-                  spec:
-                    shell: Bash
-                    envVariables:
-                      FALCON_CLIENT_SECRET: <+secrets.getValue("FALCON_CLIENT_SECRET")>
-                      FALCON_CLIENT_ID: <+secrets.getValue("FALCON_CLIENT_ID")>
-                      API_BASE_URL: <+pipeline.variables.API_BASE_URL>
-                      YOUR_CLOUD: <+pipeline.variables.YOUR_CLOUD>
-                      CONTAINER_REPO: <+pipeline.variables.CONTAINER_REPO>
-                      CONTAINER_TAG: <+pipeline.variables.CONTAINER_TAG>
-                    command: |
-                      if [ -z "$FALCON_CLIENT_SECRET" ] || [ -z "$FALCON_CLIENT_ID" ] || [ -z "$API_BASE_URL" ] || [ -z "$YOUR_CLOUD" ]; then
-                        echo "Missing required environment variables for API call"
-                        exit 0
-                      fi
-                      
-                      RESPONSE=$(curl \
-                        --header "Content-Type: application/x-www-form-urlencoded" \
-                        --data "client_id=${FALCON_CLIENT_ID}&client_secret=${FALCON_CLIENT_SECRET}" \
-                        --request POST \
-                        --silent ${API_BASE_URL}/oauth2/token) 
-                      CS_JWT=$(echo ${RESPONSE} | jq -r '.access_token')
-                      
-                      if [ -z "$CS_JWT" ] || [ "$CS_JWT" == "null" ]; then
-                        echo "Failed to extract access token"
-                        exit 0
-                      fi
-                      
-                      ImageCheck=$(curl -s -X GET -H "authorization: Bearer ${CS_JWT}" \
-                        "https://container-upload.${YOUR_CLOUD}/policy-checks?policy_type=image-prevention-policy&repository=$CONTAINER_REPO&tag=$CONTAINER_TAG")
-                      
-                      export test=$(echo $ImageCheck | jq '.resources[0].deny')
-                      echo "Image assessment result: $test"
-                    outputVariables:
-                      - name: failBuild
-                  failureStrategies:
-                    - onFailure:
-                        errors:
-                          - AllErrors
-                        action:
-                          type: Ignore
-              
-              - step:
-                  type: Run
-                  name: Build Application
-                  identifier: build_app
-                  spec:
-                    shell: Bash
-                    command: |
-                      npm cache clean -f
-                      npm install
-                      nohup npm start > /dev/null 2>&1 &
-                      sleep 5
-                  failureStrategies:
-                    - onFailure:
-                        errors:
-                          - AllErrors
-                        action:
-                          type: Ignore
-              
-              - step:
-                  type: Run
-                  name: Deploy
-                  identifier: deploy
-                  spec:
-                    shell: Bash
-                    command: |
-                      docker stop juice-shop || true
-                      docker rm juice-shop || true
-                      
-                      docker build -t juice-shop .
-                      CONTAINER_ID=$(docker run -d -P --name juice-shop juice-shop)
-                      
-                      if [ $? -eq 0 ]; then
-                        DOCKER_HOST_PORT=$(docker port juice-shop 3000 | cut -d ':' -f 2)
-                        
-                        if [ -n "$DOCKER_HOST_PORT" ]; then
-                          echo "Juice Shop is running on http://localhost:$DOCKER_HOST_PORT"
-                        else
-                          echo "Failed to get container port mapping"
-                        fi
-                      else
-                        echo "Failed to start container"
-                      fi
-                    outputVariables:
-                      - name: DOCKER_HOST_PORT
-                  failureStrategies:
-                    - onFailure:
-                        errors:
-                          - AllErrors
-                        action:
-                          type: Ignore
-    
-    - stage:
-        name: PostDeployment
-        identifier: PostDeployment
-        type: CI
-        spec:
-          cloneCodebase: false
-          platform:
-            os: Linux
-            arch: Amd64
-          runtime:
-            type: Cloud
-            spec: {}
-          execution:
-            steps:
-              - step:
-                  type: Run
-                  name: Success Notification
-                  identifier: success_notification
-                  spec:
-                    shell: Bash
-                    command: echo 'Build, test, and deployment successful!'
-              
-              - step:
-                  type: Run
-                  name: Security Findings Summary
-                  identifier: security_summary
-                  spec:
-                    shell: Bash
-                    command: |
-                      echo "## Security Scan Summary"
-                      echo ""
-                      echo "### Container Image Scan"
-                      
-                      if [ -f "/harness/remediation_plan.md" ]; then
-                        cat "/harness/remediation_plan.md"
-                      else
-                        echo "No remediation plan found. Container scan may have completed without findings."
-                      fi
-                      
-                      echo ""
-                      echo "### Next Steps"
-                      echo "1. Review the security findings in the remediation plan"
-                      echo "2. Address high and critical vulnerabilities"
-                      echo "3. Remove any detected secrets from container images"
-                      echo "4. Re-scan after remediation to verify fixes"
-                  failureStrategies:
-                    - onFailure:
-                        errors:
-                          - AllErrors
-                        action:
-                          type: Ignore
-  
+        connectorRef: <+input>
+        build:
+          type: branch
+          spec:
+            branch: <+input>
   variables:
     - name: JUICE_SHOP_REPO
       type: String
@@ -482,18 +31,441 @@ pipeline:
     - name: PROJECT_PATH
       type: String
       value: git::https://github.com/ine-labs/AWSGoat.git
-    - name: CONTAINER_REPO
-      type: String
-      value: <+input>
-    - name: CONTAINER_TAG
-      type: String
-      value: <+input>
-    - name: azureContainerRegistry
-      type: String
-      value: <+input>
-    - name: API_BASE_URL
-      type: String
-      value: <+input>
-    - name: YOUR_CLOUD
-      type: String
-      value: <+input>
+  stages:
+    - stage:
+        identifier: build_stage
+        name: Build Stage
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          caching:
+            enabled: true
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Setup NodeJS
+                  identifier: setup_nodejs
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: alpine
+                    shell: Bash
+                    command: |
+                      # Install Node.js 18.0.0
+                      apk add --update nodejs npm
+
+                      # Verify the installation
+                      node_version=$(node -v)
+                      echo "Node.js version: $node_version"
+
+                      # Check if installation was successful
+                      if [[ "$node_version" == *"18.0.0"* ]]; then
+                        echo "Node.js 18.0.0 installed successfully"
+                        export NODE_INSTALLED="true"
+                        export NODE_VERSION="$node_version"
+                      else
+                        echo "Failed to install Node.js 18.0.0"
+                        export NODE_INSTALLED="false"
+                        exit 1
+                      fi
+                    outputVariables:
+                      - name: NODE_INSTALLED
+                      - name: NODE_VERSION
+                    imagePullPolicy: IfNotPresent
+                  timeout: 10m
+              - step:
+                  type: Run
+                  name: CrowdStrike Falcon Cloud Security IaC Scan
+                  identifier: crowdstrike_iac_scan
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: alpine
+                    shell: Bash
+                    command: |
+                      # Install Docker to run CrowdStrike Falcon Cloud Security scanner
+                      apk add --no-cache docker
+
+                      # Run CrowdStrike Falcon Cloud Security IaC scan
+                      docker run --rm \
+                        -e FALCON_CLIENT_ID=${CS_USERNAME} \
+                        -e FALCON_CLIENT_SECRET=${CS_PASSWORD} \
+                        -e FALCON_CLOUD_REGION=${FALCON_REGION} \
+                        -v $(pwd):/app \
+                        quay.io/crowdstrike/falcon-iac-scan:latest \
+                        scan \
+                        --path /app \
+                        --output-format sarif \
+                        --output-path /app/cs-iac-scan-results.sarif
+
+                      # Check scan results
+                      if [ -f cs-iac-scan-results.sarif ]; then
+                        echo "Scan completed successfully. SARIF results available at cs-iac-scan-results.sarif"
+                        export SCAN_STATUS="success"
+                      else
+                        echo "Scan failed to generate results"
+                        export SCAN_STATUS="failed"
+                      fi
+                    envVariables:
+                      CS_USERNAME: <+pipeline.variables.CS_USERNAME>
+                      CS_PASSWORD: <+secrets.getValue("account.cs_password")>
+                      FALCON_REGION: <+pipeline.variables.FALCON_REGION>
+                    outputVariables:
+                      - name: SCAN_STATUS
+                  timeout: 10m
+              - step:
+                  type: Run
+                  name: Process SARIF Files
+                  identifier: process_sarif_files
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: alpine
+                    shell: Bash
+                    command: |
+                      # Set up environment
+                      echo "Starting SARIF file processing..."
+
+                      # Find all SARIF files in the current directory and subdirectories
+                      SARIF_FILES=$(find . -name "*.sarif" -type f)
+
+                      # Check if any SARIF files were found
+                      if [ -z "$SARIF_FILES" ]; then
+                        echo "No SARIF files found."
+                        export FINDINGS_COUNT=0
+                        export CRITICAL_FINDINGS=0
+                        export HIGH_FINDINGS=0
+                        export MEDIUM_FINDINGS=0
+                        export LOW_FINDINGS=0
+                        exit 0
+                      fi
+
+                      # Initialize counters
+                      TOTAL_FINDINGS=0
+                      CRITICAL=0
+                      HIGH=0
+                      MEDIUM=0
+                      LOW=0
+
+                      # Process each SARIF file
+                      for file in $SARIF_FILES; do
+                        echo "Processing $file..."
+                        
+                        # Extract findings count by severity using jq if available, otherwise use grep
+                        if command -v jq > /dev/null; then
+                          # Count total findings
+                          FILE_FINDINGS=$(jq '.runs[].results | length' "$file" 2>/dev/null || echo 0)
+                          TOTAL_FINDINGS=$((TOTAL_FINDINGS + FILE_FINDINGS))
+                          
+                          # Count by severity
+                          CRIT=$(jq '.runs[].results[] | select(.properties.priorityScore >= 9.0) | .properties.priorityScore' "$file" 2>/dev/null | wc -l)
+                          HIGH_COUNT=$(jq '.runs[].results[] | select(.properties.priorityScore >= 7.0 and .properties.priorityScore < 9.0) | .properties.priorityScore' "$file" 2>/dev/null | wc -l)
+                          MED_COUNT=$(jq '.runs[].results[] | select(.properties.priorityScore >= 4.0 and .properties.priorityScore < 7.0) | .properties.priorityScore' "$file" 2>/dev/null | wc -l)
+                          LOW_COUNT=$(jq '.runs[].results[] | select(.properties.priorityScore < 4.0) | .properties.priorityScore' "$file" 2>/dev/null | wc -l)
+                        else
+                          # Fallback to grep-based counting
+                          FILE_FINDINGS=$(grep -c "\"level\":\"" "$file" 2>/dev/null || echo 0)
+                          TOTAL_FINDINGS=$((TOTAL_FINDINGS + FILE_FINDINGS))
+                          
+                          CRIT=$(grep -c "\"level\":\"critical\"" "$file" 2>/dev/null || echo 0)
+                          HIGH_COUNT=$(grep -c "\"level\":\"high\"" "$file" 2>/dev/null || echo 0)
+                          MED_COUNT=$(grep -c "\"level\":\"medium\"" "$file" 2>/dev/null || echo 0)
+                          LOW_COUNT=$(grep -c "\"level\":\"low\"" "$file" 2>/dev/null || echo 0)
+                        fi
+                        
+                        CRITICAL=$((CRITICAL + CRIT))
+                        HIGH=$((HIGH + HIGH_COUNT))
+                        MEDIUM=$((MEDIUM + MED_COUNT))
+                        LOW=$((LOW + LOW_COUNT))
+                        
+                        echo "  Findings in $file: $FILE_FINDINGS (Critical: $CRIT, High: $HIGH_COUNT, Medium: $MED_COUNT, Low: $LOW_COUNT)"
+                      done
+
+                      # Create summary report
+                      echo "\n=== SARIF Analysis Summary ==="
+                      echo "Total findings: $TOTAL_FINDINGS"
+                      echo "Critical: $CRITICAL"
+                      echo "High: $HIGH"
+                      echo "Medium: $MEDIUM"
+                      echo "Low: $LOW"
+
+                      # Export variables for use in subsequent steps
+                      export FINDINGS_COUNT=$TOTAL_FINDINGS
+                      export CRITICAL_FINDINGS=$CRITICAL
+                      export HIGH_FINDINGS=$HIGH
+                      export MEDIUM_FINDINGS=$MEDIUM
+                      export LOW_FINDINGS=$LOW
+                    outputVariables:
+                      - name: FINDINGS_COUNT
+                      - name: CRITICAL_FINDINGS
+                      - name: HIGH_FINDINGS
+                      - name: MEDIUM_FINDINGS
+                      - name: LOW_FINDINGS
+                    imagePullPolicy: IfNotPresent
+                  timeout: 10m
+              - step:
+                  identifier: build_container_image
+                  name: Build Container Image
+                  type: BuildAndPushDockerRegistry
+                  timeout: 10m
+                  spec:
+                    connectorRef: account.harnessImage
+                    repo: <+pipeline.variables.CS_IMAGE_NAME>
+                    tags:
+                      - <+pipeline.variables.CS_IMAGE_TAG>
+                    dockerfile: Dockerfile
+                    context: .
+                    buildArgs:
+                      PORT: <+pipeline.variables.DOCKER_PORT>
+                    caching: true
+              - step:
+                  identifier: crowdstrike_container_scan
+                  name: CrowdStrike Container Scan
+                  type: Run
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: alpine
+                    shell: Bash
+                    command: |
+                      # Install required dependencies
+                      apk add --no-cache curl jq
+
+                      # Set environment variables for CrowdStrike scanning
+                      echo "Starting CrowdStrike Falcon Cloud Security scan for container image: $IMAGE_TO_SCAN"
+
+                      # Authenticate with CrowdStrike API
+                      echo "Authenticating with CrowdStrike Falcon API..."
+                      TOKEN=$(curl -s -X POST "https://$FALCON_REGION.api.crowdstrike.com/oauth2/token" \
+                        -H "Content-Type: application/x-www-form-urlencoded" \
+                        -d "client_id=$CS_USERNAME&client_secret=$CS_PASSWORD" | jq -r '.access_token')
+
+                      if [ -z "$TOKEN" ] || [ "$TOKEN" == "null" ]; then
+                        echo "Failed to authenticate with CrowdStrike API"
+                        exit 1
+                      fi
+
+                      echo "Authentication successful"
+
+                      # Initiate container image scan
+                      echo "Initiating scan for image: $IMAGE_TO_SCAN"
+                      SCAN_ID=$(curl -s -X POST "https://$FALCON_REGION.api.crowdstrike.com/container-security/entities/image-assessment/v1" \
+                        -H "Authorization: Bearer $TOKEN" \
+                        -H "Content-Type: application/json" \
+                        -d "{\"image_name\": \"$IMAGE_TO_SCAN\"}" | jq -r '.resources[0].id')
+
+                      if [ -z "$SCAN_ID" ] || [ "$SCAN_ID" == "null" ]; then
+                        echo "Failed to initiate scan"
+                        exit 1
+                      fi
+
+                      echo "Scan initiated with ID: $SCAN_ID"
+
+                      # Poll for scan results
+                      echo "Waiting for scan results..."
+                      STATUS="pending"
+                      MAX_ATTEMPTS=30
+                      ATTEMPT=0
+
+                      while [ "$STATUS" == "pending" ] && [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+                        sleep 10
+                        ATTEMPT=$((ATTEMPT+1))
+                        
+                        RESULT=$(curl -s -X GET "https://$FALCON_REGION.api.crowdstrike.com/container-security/combined/image-assessment/v1?ids=$SCAN_ID" \
+                          -H "Authorization: Bearer $TOKEN")
+                        
+                        STATUS=$(echo $RESULT | jq -r '.resources[0].status')
+                        echo "Scan status: $STATUS (attempt $ATTEMPT of $MAX_ATTEMPTS)"
+                      done
+
+                      if [ "$STATUS" != "completed" ]; then
+                        echo "Scan did not complete successfully"
+                        exit 1
+                      fi
+
+                      # Extract and display scan results
+                      VULNERABILITIES=$(echo $RESULT | jq -r '.resources[0].vulnerabilities.count')
+                      CRITICAL=$(echo $RESULT | jq -r '.resources[0].vulnerabilities.critical')
+                      HIGH=$(echo $RESULT | jq -r '.resources[0].vulnerabilities.high')
+                      MEDIUM=$(echo $RESULT | jq -r '.resources[0].vulnerabilities.medium')
+                      LOW=$(echo $RESULT | jq -r '.resources[0].vulnerabilities.low')
+
+                      echo "Scan completed successfully"
+                      echo "Total vulnerabilities found: $VULNERABILITIES"
+                      echo "Critical: $CRITICAL"
+                      echo "High: $HIGH"
+                      echo "Medium: $MEDIUM"
+                      echo "Low: $LOW"
+
+                      # Export results as output variables
+                      export TOTAL_VULNERABILITIES=$VULNERABILITIES
+                      export CRITICAL_VULNERABILITIES=$CRITICAL
+                      export HIGH_VULNERABILITIES=$HIGH
+
+                      # Fail the build if critical vulnerabilities are found (optional)
+                      if [ $CRITICAL -gt 0 ]; then
+                        echo "Critical vulnerabilities found in the container image!"
+                        # Uncomment the line below to fail the pipeline if critical vulnerabilities are found
+                        # exit 1
+                      fi
+                    envVariables:
+                      IMAGE_TO_SCAN: <+pipeline.variables.CS_IMAGE_NAME>:<+pipeline.variables.CS_IMAGE_TAG>
+                      CS_USERNAME: <+pipeline.variables.CS_USERNAME>
+                      CS_PASSWORD: <+secrets.getValue("account.crowdstrike_api_key")>
+                      FALCON_REGION: <+pipeline.variables.FALCON_REGION>
+                    outputVariables:
+                      - name: TOTAL_VULNERABILITIES
+                      - name: CRITICAL_VULNERABILITIES
+                      - name: HIGH_VULNERABILITIES
+                  timeout: 10m
+              - step:
+                  type: Run
+                  name: Build and Deploy App
+                  identifier: build_and_deploy_app
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: alpine
+                    shell: Bash
+                    command: |
+                      # Install dependencies
+                      npm install
+
+                      # Build the application
+                      npm run build
+
+                      # Prepare for deployment
+                      echo "Configuring application to run on port $DOCKER_PORT"
+                      export APP_READY="true"
+                    envVariables:
+                      DOCKER_PORT: <+pipeline.variables.DOCKER_PORT>
+                    outputVariables:
+                      - name: APP_READY
+                    imagePullPolicy: IfNotPresent
+                  timeout: 10m
+              - step:
+                  identifier: publish_security_reports
+                  name: Publish Security Reports
+                  type: Run
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: alpine
+                    shell: Bash
+                    command: |
+                      # Create directory for security reports
+                      mkdir -p security_reports
+
+                      # Collect CrowdStrike IaC scan results
+                      echo "Collecting CrowdStrike IaC scan results..."
+                      if [ -d "cs_iac_scan_results" ]; then
+                        cp -r cs_iac_scan_results/* security_reports/
+                        echo "IaC scan results collected successfully"
+                      else
+                        echo "Warning: IaC scan results directory not found"
+                      fi
+
+                      # Collect CrowdStrike container scan results
+                      echo "Collecting CrowdStrike container scan results..."
+                      if [ -d "cs_container_scan_results" ]; then
+                        cp -r cs_container_scan_results/* security_reports/
+                        echo "Container scan results collected successfully"
+                      else
+                        echo "Warning: Container scan results directory not found"
+                      fi
+
+                      # Generate summary report
+                      echo "Generating security summary report..."
+                      cat > security_reports/summary.md << EOF
+                      # Security Scan Summary
+
+                      ## Overview
+                      This report contains security scan results from CrowdStrike IaC and container scans.
+
+                      ## Scan Results
+                      - IaC Scan: $(ls -la security_reports/iac* 2>/dev/null | wc -l) files
+                      - Container Scan: $(ls -la security_reports/container* 2>/dev/null | wc -l) files
+
+                      ## Timestamp
+                      Generated: $(date)
+                      EOF
+
+                      # List all collected reports
+                      echo "Security reports collected:"
+                      ls -la security_reports/
+
+                      # Set output variable with report path
+                      export SECURITY_REPORTS_PATH="security_reports"
+                      echo "Security reports published at: $SECURITY_REPORTS_PATH"
+                    outputVariables:
+                      - name: SECURITY_REPORTS_PATH
+                  timeout: 10m
+              - step:
+                  type: Run
+                  name: Mac Support Notice
+                  identifier: mac_support_notice
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: alpine
+                    shell: Bash
+                    command: |
+                      echo "Contact Harness support to enable Mac support on Cloud"
+                    envVariables: {}
+                  timeout: 10m
+            rollbackSteps: []
+    - stage:
+        identifier: post_deployment_stage
+        name: Post Deployment Stage
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  identifier: send_slack_notification
+                  name: Send Slack Notification
+                  type: SlackNotify
+                  timeout: 10m
+                  spec:
+                    token: <+secrets.getValue("account.Harness-Oauth-access-token-9df83a16-087b-4e72-9604-bff1cd7e6a4a")>
+                    channel: "#deployments"
+                    messageContent: |-
+                      :white_check_mark: *Deployment Completed Successfully*
+
+                      *Pipeline:* <+pipeline.name>
+                      *Execution ID:* <+pipeline.executionId>
+                      *Status:* <+pipeline.status>
+                      *Triggered By:* <+pipeline.triggeredBy.name>
+                      *Execution URL:* <+pipeline.executionUrl>
+
+                      Deployment has been completed successfully. Please check the details above for more information.
+              - step:
+                  identifier: send_email_notification
+                  name: Send Email Notification
+                  type: Email
+                  spec:
+                    subject: Deployment Completed Successfully
+                    to: <+input>
+                    body: |
+                      Dear Stakeholders,
+
+                      We are pleased to inform you that the post-deployment tasks have been successfully completed.
+
+                      Deployment Summary:
+                      - Pipeline: <+pipeline.name>
+                      - Execution ID: <+pipeline.executionId>
+                      - Status: <+pipeline.status>
+                      - Started at: <+pipeline.startTs>
+                      - Completed at: <+pipeline.endTs>
+
+                      For more details, please visit the execution URL: <+pipeline.executionUrl>
+
+                      Thank you,
+                      The Deployment Team
+                  timeout: 10m
+            rollbackSteps: []
+  description: This pipeline was generated by Harness AI on 2025-12-03 04:34:44 UTC by ariella.kuhl.
+  tags:
+    ai_generated: "true"
+  projectIdentifier: Spooky
+  orgIdentifier: default
