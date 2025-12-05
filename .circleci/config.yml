@@ -90,7 +90,7 @@ jobs:
             # Login to Docker Hub
             if [ -n "$DOCKERHUB_PASSWORD" ] && [ -n "$DOCKER_USERNAME" ]; then
               echo "Logging into Docker Hub as $DOCKER_USERNAME..."
-              echo "$DOCKERHUB_PASSWORD" | docker login docker.io -u "$DOCKER_USERNAME" --password-stdin
+              echo "$DOCKERHUB_PASSWORD" | docker login --username "$DOCKER_USERNAME" --password-stdin
             else
               echo "Warning: Docker Hub credentials not provided, skipping login"
             fi
