@@ -58,7 +58,7 @@ jobs:
       CS_IMAGE_TAG: latest
       DOCKER_USERNAME: mile
       FALCON_REGION: us-1
-      PROJECT_PATH: .
+      PROJECT_PATH: https://github.com/mile9299/IAC_Examples.git
       FCS_SCANNER_IMAGE: mile/cs-fcs
       FCS_SCANNER_TAG: 2.1.5
     steps:
