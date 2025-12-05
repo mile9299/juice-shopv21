@@ -115,12 +115,13 @@ jobs:
             echo "=============== FCS IaC Scan Ends ==============="
             echo "Scan status: $scan_status"
 
-            echo "success" > /tmp/scan_status.txt
+            # Save status to workspace directory
+            echo "success" > scan_status.txt
       - persist_to_workspace:
           root: .
           paths:
             - scansummary.txt
-            - /tmp/scan_status.txt
+            - scan_status.txt
 
   process-iac-results:
     executor: alpine-executor
@@ -136,11 +137,11 @@ jobs:
 
             if [ ! -f scansummary.txt ]; then
               echo "No scan summary found"
-              echo "0" > /tmp/findings_count.txt
-              echo "0" > /tmp/critical_findings.txt
-              echo "0" > /tmp/high_findings.txt
-              echo "0" > /tmp/medium_findings.txt
-              echo "0" > /tmp/low_findings.txt
+              echo "0" > findings_count.txt
+              echo "0" > critical_findings.txt
+              echo "0" > high_findings.txt
+              echo "0" > medium_findings.txt
+              echo "0" > low_findings.txt
               exit 0
             fi
 
@@ -156,13 +157,13 @@ jobs:
             echo "=== IaC Scan Summary ==="
             echo "Total: $TOTAL | Critical: $CRITICAL | High: $HIGH | Medium: $MEDIUM | Info: $INFORMATIONAL"
 
-            echo "$TOTAL" > /tmp/findings_count.txt
-            echo "$CRITICAL" > /tmp/critical_findings.txt
-            echo "$HIGH" > /tmp/high_findings.txt
-            echo "$MEDIUM" > /tmp/medium_findings.txt
-            echo "$INFORMATIONAL" > /tmp/low_findings.txt
+            echo "$TOTAL" > findings_count.txt
+            echo "$CRITICAL" > critical_findings.txt
+            echo "$HIGH" > high_findings.txt
+            echo "$MEDIUM" > medium_findings.txt
+            echo "$INFORMATIONAL" > low_findings.txt
       - persist_to_workspace:
-          root: /tmp
+          root: .
           paths:
             - findings_count.txt
             - critical_findings.txt
@@ -218,17 +219,17 @@ jobs:
               
               if [ $? -eq 0 ]; then
                 echo "✓ Image pushed successfully"
-                echo "success" > /tmp/build_status.txt
+                echo "success" > build_status.txt
               else
                 echo "✗ Image push failed"
-                echo "push_failed" > /tmp/build_status.txt
+                echo "push_failed" > build_status.txt
               fi
             else
               echo "✗ Container image build failed"
-              echo "failed" > /tmp/build_status.txt
+              echo "failed" > build_status.txt
             fi
       - persist_to_workspace:
-          root: /tmp
+          root: .
           paths:
             - build_status.txt
 
@@ -276,10 +277,10 @@ jobs:
               fi
               if [ $i -eq 45 ]; then
                 echo "Error: Docker daemon failed to start after 90 seconds"
-                echo "0" > /tmp/total_vulns.txt
-                echo "0" > /tmp/critical_vulns.txt
-                echo "0" > /tmp/high_vulns.txt
-                echo "false" > /tmp/secrets_found.txt
+                echo "0" > total_vulns.txt
+                echo "0" > critical_vulns.txt
+                echo "0" > high_vulns.txt
+                echo "false" > secrets_found.txt
                 exit 0
               fi
               sleep 2
@@ -370,14 +371,14 @@ jobs:
                 echo "  Critical: $CRITICAL_VULNS"
                 echo "  High: $HIGH_VULNS"
                 
-                echo "$TOTAL_VULNS" > /tmp/total_vulns.txt
-                echo "$CRITICAL_VULNS" > /tmp/critical_vulns.txt
-                echo "$HIGH_VULNS" > /tmp/high_vulns.txt
+                echo "$TOTAL_VULNS" > total_vulns.txt
+                echo "$CRITICAL_VULNS" > critical_vulns.txt
+                echo "$HIGH_VULNS" > high_vulns.txt
               else
                 echo "No vulnerabilities found"
-                echo "0" > /tmp/total_vulns.txt
-                echo "0" > /tmp/critical_vulns.txt
-                echo "0" > /tmp/high_vulns.txt
+                echo "0" > total_vulns.txt
+                echo "0" > critical_vulns.txt
+                echo "0" > high_vulns.txt
               fi
               
               # Check for secrets
@@ -390,10 +391,10 @@ jobs:
                 echo "## Detected Secrets" >> remediation_plan.md
                 jq -r '.secrets[] | "- Secret type: \(.type) found in \(.path)\n  - Action: Remove this secret and use secure storage methods instead\n"' report.json >> remediation_plan.md || true
                 
-                echo "true" > /tmp/secrets_found.txt
+                echo "true" > secrets_found.txt
               else
                 echo "No secrets were detected in the image"
-                echo "false" > /tmp/secrets_found.txt
+                echo "false" > secrets_found.txt
               fi
               
               # Display remediation plan
@@ -405,10 +406,10 @@ jobs:
               echo "Error: Scan report not generated"
               echo "# No security findings to report" > remediation_plan.md
               
-              echo "0" > /tmp/total_vulns.txt
-              echo "0" > /tmp/critical_vulns.txt
-              echo "0" > /tmp/high_vulns.txt
-              echo "false" > /tmp/secrets_found.txt
+              echo "0" > total_vulns.txt
+              echo "0" > critical_vulns.txt
+              echo "0" > high_vulns.txt
+              echo "false" > secrets_found.txt
             fi
 
             echo ""
@@ -418,9 +419,6 @@ jobs:
           paths:
             - report.json
             - remediation_plan.md
-      - persist_to_workspace:
-          root: /tmp
-          paths:
             - total_vulns.txt
             - critical_vulns.txt
             - high_vulns.txt
@@ -480,12 +478,12 @@ jobs:
             echo "High: $HIGH"
             echo "Secrets Detected: $SECRETS_DETECTED"
 
-            echo "$TOTAL" > /tmp/vulnerabilities.txt
-            echo "$CRITICAL" > /tmp/critical_vulns_final.txt
-            echo "$HIGH" > /tmp/high_vulns_final.txt
-            echo "$SECRETS_DETECTED" > /tmp/secrets_detected.txt
+            echo "$TOTAL" > vulnerabilities.txt
+            echo "$CRITICAL" > critical_vulns_final.txt
+            echo "$HIGH" > high_vulns_final.txt
+            echo "$SECRETS_DETECTED" > secrets_detected.txt
       - persist_to_workspace:
-          root: /tmp
+          root: .
           paths:
             - vulnerabilities.txt
             - critical_vulns_final.txt
@@ -507,7 +505,7 @@ jobs:
             # Check if package.json exists
             if [ ! -f package.json ]; then
               echo "Error: package.json not found"
-              echo "false" > /tmp/app_ready.txt
+              echo "false" > app_ready.txt
               exit 0
             fi
 
@@ -527,9 +525,9 @@ jobs:
             echo ""
             echo "✓ Application dependencies verified"
             echo "Note: Application is containerized and runs via Docker"
-            echo "true" > /tmp/app_ready.txt
+            echo "true" > app_ready.txt
       - persist_to_workspace:
-          root: /tmp
+          root: .
           paths:
             - app_ready.txt
 
