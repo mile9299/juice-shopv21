@@ -122,7 +122,7 @@ jobs:
             echo "=============== FCS IaC Scan Ends ==============="
             echo "Scan status: $scan_status"
 
-            # Save status to workspace directory
+            # Save status to workspace directory (current directory)
             echo "success" > scan_status.txt
       - persist_to_workspace:
           root: .
