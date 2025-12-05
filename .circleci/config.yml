@@ -39,7 +39,7 @@ workflows:
             - build-container-image
       - process-container-results:
           requires:
-            - scan-container-image
+            - crwd-scan-container-image
       - verify-app-dependencies:
           requires:
             - process-container-results
