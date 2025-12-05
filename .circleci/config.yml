@@ -28,22 +28,22 @@ workflows:
   juice-shop-fcs-pipeline:
     jobs:
       - crowdstrike-iac-scan
-      - crwd-iac-results:
+      - process-iac-results:
           requires:
             - crowdstrike-iac-scan
       - build-container-image:
           requires:
             - process-iac-results
-      - crwd-scan-container-image:
+      - scan-container-image:
           requires:
             - build-container-image
       - process-container-results:
           requires:
-            - crwd-scan-container-image
+            - scan-container-image
       - verify-app-dependencies:
           requires:
             - process-container-results
-      - crwd-security-summary:
+      - security-summary:
           requires:
             - verify-app-dependencies
 
@@ -130,7 +130,7 @@ jobs:
             - scansummary.txt
             - scan_status.txt
 
-  crwd-iac-results:
+  process-iac-results:
     executor: alpine-executor
     steps:
       - attach_workspace:
@@ -245,7 +245,7 @@ jobs:
           paths:
             - build_status.txt
 
-  crwd-scan-container-image:
+  scan-container-image:
     executor: python-executor
     environment:
       FALCON_REGION: us-1
@@ -438,7 +438,7 @@ jobs:
             - high_vulns.txt
             - secrets_found.txt
 
-  crwd-container-results:
+  process-container-results:
     executor: alpine-executor
     steps:
       - attach_workspace:
@@ -545,7 +545,7 @@ jobs:
           paths:
             - app_ready.txt
 
-  crwd-security-summary:
+  security-summary:
     executor: alpine-executor
     environment:
       CS_IMAGE_NAME: mile/spooky
