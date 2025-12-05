@@ -87,9 +87,16 @@ jobs:
               exit 1
             fi
 
-            echo "$DOCKERHUB_PASSWORD" | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
+            # Login to Docker Hub
+            if [ -n "$DOCKERHUB_PASSWORD" ] && [ -n "$DOCKER_USERNAME" ]; then
+              echo "Logging into Docker Hub as $DOCKER_USERNAME..."
+              echo "$DOCKERHUB_PASSWORD" | docker login docker.io -u "$DOCKER_USERNAME" --password-stdin
+            else
+              echo "Warning: Docker Hub credentials not provided, skipping login"
+            fi
 
             SCANNER_IMAGE="${FCS_SCANNER_IMAGE}:${FCS_SCANNER_TAG}"
+            echo "Pulling scanner image: $SCANNER_IMAGE"
             docker pull "$SCANNER_IMAGE"
 
             echo "=============== FCS IaC Scan Starts ==============="
@@ -204,7 +211,12 @@ jobs:
             fi
 
             # Login to Docker Hub
-            echo "$DOCKERHUB_PASSWORD" | docker login docker.io --username "$DOCKER_USERNAME" --password-stdin
+            if [ -n "$DOCKERHUB_PASSWORD" ] && [ -n "$DOCKER_USERNAME" ]; then
+              echo "Logging into Docker Hub as $DOCKER_USERNAME..."
+              echo "$DOCKERHUB_PASSWORD" | docker login docker.io -u "$DOCKER_USERNAME" --password-stdin
+            else
+              echo "Warning: Docker Hub credentials not provided, skipping login"
+            fi
 
             # Build the image
             echo "Building image: ${CS_IMAGE_NAME}:${CS_IMAGE_TAG}"
@@ -292,9 +304,11 @@ jobs:
             docker info
 
             # Login to Docker Hub if credentials are provided
-            if [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKERHUB_PASSWORD" ]; then
-              echo "Logging into Docker Hub..."
-              echo "$DOCKERHUB_PASSWORD" | docker login docker.io --username "$DOCKER_USERNAME" --password-stdin
+            if [ -n "$DOCKERHUB_PASSWORD" ] && [ -n "$DOCKER_USERNAME" ]; then
+              echo "Logging into Docker Hub as $DOCKER_USERNAME..."
+              echo "$DOCKERHUB_PASSWORD" | docker login docker.io -u "$DOCKER_USERNAME" --password-stdin
+            else
+              echo "Warning: Docker Hub credentials not provided, skipping login"
             fi
 
             # Pull the image to scan
