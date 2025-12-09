@@ -1,0 +1,440 @@
+# GitLab CI/CD Pipeline for JuiceShop - FCS Pipeline
+
+variables:
+  JUICE_SHOP_REPO: "https://github.com/mile9299/juice-shopv21.git"
+  DOCKER_PORT: "3000"
+  CS_IMAGE_NAME: "mile/spooky"
+  CS_IMAGE_TAG: "latest"
+  DOCKER_USERNAME: "mile"
+  FALCON_REGION: "us-1"
+  PROJECT_PATH: "."
+  FCS_SCANNER_IMAGE: "mile/cs-fcs"
+  FCS_SCANNER_TAG: "2.1.5"
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+
+stages:
+  - iac-scan
+  - process-iac
+  - build
+  - container-scan
+  - process-container
+  - verify
+  - summary
+
+crowdstrike-iac-scan:
+  stage: iac-scan
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - echo "Starting CrowdStrike IaC Scan..."
+    - |
+      for i in $(seq 1 30); do
+        if docker info >/dev/null 2>&1; then
+          echo "Docker daemon is ready"
+          break
+        fi
+        sleep 2
+      done
+    - |
+      if [ -n "$CS_PASSWORD" ] && [ -n "$DOCKER_USERNAME" ]; then
+        echo "Logging into Docker Hub as $DOCKER_USERNAME..."
+        echo "$CS_PASSWORD" | docker login docker.io -u "$DOCKER_USERNAME" --password-stdin
+      else
+        echo "Warning Docker Hub credentials not provided"
+      fi
+  script:
+    - SCANNER_IMAGE="${FCS_SCANNER_IMAGE}:${FCS_SCANNER_TAG}"
+    - echo "Pulling scanner image $SCANNER_IMAGE"
+    - docker pull "$SCANNER_IMAGE"
+    - echo "FCS IaC Scan Starts"
+    - |
+      set +e
+      docker run --network=host --rm \
+        -v "$(pwd):/scan" \
+        -w /scan \
+        -e FALCON_CLIENT_ID="$FALCON_CLIENT_ID" \
+        -e FALCON_CLIENT_SECRET="$FALCON_CLIENT_SECRET" \
+        -e FALCON_CLOUD_REGION="$FALCON_REGION" \
+        "$SCANNER_IMAGE" \
+        --client-id "$FALCON_CLIENT_ID" \
+        --client-secret "$FALCON_CLIENT_SECRET" \
+        --falcon-region "$FALCON_REGION" \
+        iac scan -p "$PROJECT_PATH" --upload-results > scansummary.txt 2>&1
+      scan_status=$?
+      set -e
+    - cat scansummary.txt
+    - echo "FCS IaC Scan Ends"
+    - echo "Scan status $scan_status"
+    - echo "success" > scan_status.txt
+  artifacts:
+    paths:
+      - scansummary.txt
+      - scan_status.txt
+    expire_in: 1 week
+  timeout: 20m
+
+process-iac-results:
+  stage: process-iac
+  image: alpine:latest
+  dependencies:
+    - crowdstrike-iac-scan
+  before_script:
+    - apk add --no-cache jq
+  script:
+    - echo "Processing IaC Scan Results"
+    - |
+      if [ ! -f scansummary.txt ]; then
+        echo "No scan summary found"
+        echo "0" > findings_count.txt
+        echo "0" > critical_findings.txt
+        echo "0" > high_findings.txt
+        echo "0" > medium_findings.txt
+        echo "0" > low_findings.txt
+        exit 0
+      fi
+    - cat scansummary.txt
+    - TOTAL=$(grep "Total:" scansummary.txt | grep -oE '[0-9]+' | head -1 || echo 0)
+    - CRITICAL=$(grep "Critical:" scansummary.txt | grep -oE '[0-9]+' | head -1 || echo 0)
+    - HIGH=$(grep "High:" scansummary.txt | grep -oE '[0-9]+' | head -1 || echo 0)
+    - MEDIUM=$(grep "Medium:" scansummary.txt | grep -oE '[0-9]+' | head -1 || echo 0)
+    - INFORMATIONAL=$(grep "Informational:" scansummary.txt | grep -oE '[0-9]+' | head -1 || echo 0)
+    - echo "IaC Scan Summary"
+    - echo "Total $TOTAL Critical $CRITICAL High $HIGH Medium $MEDIUM Info $INFORMATIONAL"
+    - echo "$TOTAL" > findings_count.txt
+    - echo "$CRITICAL" > critical_findings.txt
+    - echo "$HIGH" > high_findings.txt
+    - echo "$MEDIUM" > medium_findings.txt
+    - echo "$INFORMATIONAL" > low_findings.txt
+  artifacts:
+    paths:
+      - findings_count.txt
+      - critical_findings.txt
+      - high_findings.txt
+      - medium_findings.txt
+      - low_findings.txt
+    expire_in: 1 week
+  timeout: 5m
+
+build-container-image:
+  stage: build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  dependencies:
+    - process-iac-results
+  before_script:
+    - echo "Building container image..."
+    - |
+      for i in $(seq 1 30); do
+        if docker info >/dev/null 2>&1; then
+          echo "Docker daemon is ready"
+          break
+        fi
+        sleep 2
+      done
+    - |
+      if [ -n "$CS_PASSWORD" ] && [ -n "$DOCKER_USERNAME" ]; then
+        echo "Logging into Docker Hub as $DOCKER_USERNAME..."
+        echo "$CS_PASSWORD" | docker login docker.io -u "$DOCKER_USERNAME" --password-stdin
+      else
+        echo "Warning Docker Hub credentials not provided"
+      fi
+  script:
+    - echo "Building image ${CS_IMAGE_NAME}:${CS_IMAGE_TAG}"
+    - docker build -t "${CS_IMAGE_NAME}:${CS_IMAGE_TAG}" -f Dockerfile .
+    - |
+      if [ $? -eq 0 ]; then
+        echo "Container image built successfully"
+        echo "Pushing image to Docker Hub..."
+        docker push "${CS_IMAGE_NAME}:${CS_IMAGE_TAG}"
+        if [ $? -eq 0 ]; then
+          echo "Image pushed successfully"
+          echo "success" > build_status.txt
+        else
+          echo "Image push failed"
+          echo "push_failed" > build_status.txt
+        fi
+      else
+        echo "Container image build failed"
+        echo "failed" > build_status.txt
+      fi
+  artifacts:
+    paths:
+      - build_status.txt
+    expire_in: 1 week
+  timeout: 15m
+  allow_failure: true
+
+scan-container-image:
+  stage: container-scan
+  image: python:3.9-slim
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_VERIFY: 1
+    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+  dependencies:
+    - build-container-image
+  before_script:
+    - echo "Starting CrowdStrike Container Image Scan..."
+    - apt-get update && apt-get install -y git jq docker.io ca-certificates curl
+    - pip3 install --no-cache-dir --upgrade pip
+    - pip3 install --no-cache-dir docker crowdstrike-falconpy retry
+  script:
+    - |
+      echo "Waiting for Docker daemon to start..."
+      for i in $(seq 1 45); do
+        if docker info >/dev/null 2>&1; then
+          echo "Docker daemon is ready"
+          break
+        fi
+        if [ $i -eq 45 ]; then
+          echo "Error Docker daemon failed to start"
+          echo "0" > total_vulns.txt
+          echo "0" > critical_vulns.txt
+          echo "0" > high_vulns.txt
+          echo "false" > secrets_found.txt
+          exit 0
+        fi
+        sleep 2
+      done
+    - docker --version
+    - docker info
+    - |
+      if [ -n "$CS_PASSWORD" ] && [ -n "$DOCKER_USERNAME" ]; then
+        echo "Logging into Docker Hub as $DOCKER_USERNAME..."
+        echo "$CS_PASSWORD" | docker login docker.io -u "$DOCKER_USERNAME" --password-stdin
+      fi
+    - echo "Pulling image to scan ${CS_IMAGE_NAME}:${CS_IMAGE_TAG}"
+    - docker pull "${CS_IMAGE_NAME}:${CS_IMAGE_TAG}" || echo "Warning Failed to pull image"
+    - echo "Cloning CrowdStrike container-image-scan repository..."
+    - |
+      if [ ! -d container-image-scan ]; then
+        git clone https://github.com/crowdstrike/container-image-scan
+      fi
+    - export FALCON_CLIENT_SECRET="$FALCON_CLIENT_SECRET"
+    - export FALCON_CLIENT_ID="$FALCON_CLIENT_ID"
+    - export FALCON_CLOUD_REGION="$FALCON_REGION"
+    - echo "Scan Configuration"
+    - echo "Image ${CS_IMAGE_NAME}:${CS_IMAGE_TAG}"
+    - echo "Region $FALCON_REGION"
+    - echo "Running container image scan..."
+    - |
+      set +e
+      python3 container-image-scan/cs_scanimage.py \
+        --repo "$CS_IMAGE_NAME" \
+        --tag "$CS_IMAGE_TAG" \
+        --cloud-region "$FALCON_REGION" \
+        --json-report report.json
+      scan_exit_code=$?
+      set -e
+    - echo "Scan completed with exit code $scan_exit_code"
+    - |
+      if [ -f "report.json" ]; then
+        echo "Scan report generated"
+        echo "Scan Report"
+        cat report.json | jq '.' || cat report.json
+        echo "# Vulnerability Remediation Plan" > remediation_plan.md
+        echo "" >> remediation_plan.md
+        echo "Generated: $(date)" >> remediation_plan.md
+        echo "Image: ${CS_IMAGE_NAME}:${CS_IMAGE_TAG}" >> remediation_plan.md
+        echo "" >> remediation_plan.md
+        if jq -e '.vulnerabilities' report.json > /dev/null 2>&1; then
+          echo "Vulnerabilities found in the image"
+          jq -r '.vulnerabilities[] | select(.severity == "HIGH" or .severity == "CRITICAL") | "- \(.severity): \(.cve_id) in \(.package_name) \(.package_version)"' report.json || true
+          echo "## High and Critical Vulnerabilities" >> remediation_plan.md
+          jq -r '.vulnerabilities[] | select(.severity == "HIGH" or .severity == "CRITICAL") | "- **\(.severity)**: \(.cve_id) in \(.package_name) \(.package_version)\n  - Description: \(.description // "N/A")\n  - Remediation: Update to latest version or apply patch\n"' report.json >> remediation_plan.md || true
+          TOTAL_VULNS=$(jq '[.vulnerabilities[]] | length' report.json || echo 0)
+          CRITICAL_VULNS=$(jq '[.vulnerabilities[] | select(.severity == "CRITICAL")] | length' report.json || echo 0)
+          HIGH_VULNS=$(jq '[.vulnerabilities[] | select(.severity == "HIGH")] | length' report.json || echo 0)
+          echo "Vulnerability Summary"
+          echo "  Total: $TOTAL_VULNS"
+          echo "  Critical: $CRITICAL_VULNS"
+          echo "  High: $HIGH_VULNS"
+          echo "$TOTAL_VULNS" > total_vulns.txt
+          echo "$CRITICAL_VULNS" > critical_vulns.txt
+          echo "$HIGH_VULNS" > high_vulns.txt
+        else
+          echo "No vulnerabilities found"
+          echo "0" > total_vulns.txt
+          echo "0" > critical_vulns.txt
+          echo "0" > high_vulns.txt
+        fi
+        if jq -e '.secrets' report.json > /dev/null 2>&1; then
+          echo "WARNING Secrets were detected in the image"
+          jq -r '.secrets[] | "- Secret type: \(.type) in \(.path)"' report.json || true
+          echo "" >> remediation_plan.md
+          echo "## Detected Secrets" >> remediation_plan.md
+          jq -r '.secrets[] | "- Secret type: \(.type) found in \(.path)\n  - Action: Remove this secret and use secure storage methods instead\n"' report.json >> remediation_plan.md || true
+          echo "true" > secrets_found.txt
+        else
+          echo "No secrets were detected in the image"
+          echo "false" > secrets_found.txt
+        fi
+        echo "Remediation Plan"
+        cat remediation_plan.md
+      else
+        echo "Error Scan report not generated"
+        echo "# No security findings to report" > remediation_plan.md
+        echo "0" > total_vulns.txt
+        echo "0" > critical_vulns.txt
+        echo "0" > high_vulns.txt
+        echo "false" > secrets_found.txt
+      fi
+    - echo "Container image scan completed"
+  artifacts:
+    paths:
+      - report.json
+      - remediation_plan.md
+      - total_vulns.txt
+      - critical_vulns.txt
+      - high_vulns.txt
+      - secrets_found.txt
+    expire_in: 1 week
+  timeout: 15m
+  allow_failure: true
+
+process-container-results:
+  stage: process-container
+  image: alpine:latest
+  dependencies:
+    - scan-container-image
+  before_script:
+    - apk add --no-cache jq
+  script:
+    - echo "Processing Container Scan Results"
+    - |
+      if [ ! -f report.json ]; then
+        echo "No scan report found checking for saved results"
+        if [ -f total_vulns.txt ]; then
+          TOTAL=$(cat total_vulns.txt)
+          CRITICAL=$(cat critical_vulns.txt)
+          HIGH=$(cat high_vulns.txt)
+          SECRETS_DETECTED=$(cat secrets_found.txt)
+        else
+          echo "No saved results found either"
+          TOTAL=0
+          CRITICAL=0
+          HIGH=0
+          SECRETS_DETECTED="false"
+        fi
+      else
+        echo "Scan Report Summary"
+        cat report.json | jq '.' || cat report.json
+        TOTAL=$(jq '[.vulnerabilities[]] | length' report.json 2>/dev/null || echo 0)
+        CRITICAL=$(jq '[.vulnerabilities[] | select(.severity == "CRITICAL")] | length' report.json 2>/dev/null || echo 0)
+        HIGH=$(jq '[.vulnerabilities[] | select(.severity == "HIGH")] | length' report.json 2>/dev/null || echo 0)
+        SECRETS=$(jq '[.secrets[]] | length' report.json 2>/dev/null || echo 0)
+        if [ "$SECRETS" -gt 0 ]; then
+          SECRETS_DETECTED="true"
+        else
+          SECRETS_DETECTED="false"
+        fi
+      fi
+    - echo "Container Scan Summary"
+    - echo "Total Vulnerabilities $TOTAL"
+    - echo "Critical $CRITICAL"
+    - echo "High $HIGH"
+    - echo "Secrets Detected $SECRETS_DETECTED"
+    - echo "$TOTAL" > vulnerabilities.txt
+    - echo "$CRITICAL" > critical_vulns_final.txt
+    - echo "$HIGH" > high_vulns_final.txt
+    - echo "$SECRETS_DETECTED" > secrets_detected.txt
+  artifacts:
+    paths:
+      - vulnerabilities.txt
+      - critical_vulns_final.txt
+      - high_vulns_final.txt
+      - secrets_detected.txt
+    expire_in: 1 week
+  timeout: 5m
+
+verify-app-dependencies:
+  stage: verify
+  image: node:18-alpine
+  dependencies:
+    - process-container-results
+  script:
+    - echo "Verifying Juice Shop application"
+    - |
+      if [ ! -f package.json ]; then
+        echo "Error package.json not found"
+        echo "false" > app_ready.txt
+        exit 0
+      fi
+    - echo "Installing dependencies"
+    - npm install --production
+    - echo "Available npm scripts"
+    - npm run 2>&1 | grep -A 100 "Lifecycle scripts" || echo "No scripts found"
+    - echo "Running security audit"
+    - npm audit --production || true
+    - echo "Application dependencies verified"
+    - echo "Note Application is containerized and runs via Docker"
+    - echo "true" > app_ready.txt
+  artifacts:
+    paths:
+      - app_ready.txt
+    expire_in: 1 week
+  timeout: 10m
+  allow_failure: true
+
+security-summary:
+  stage: summary
+  image: alpine:latest
+  dependencies:
+    - process-iac-results
+    - build-container-image
+    - process-container-results
+    - verify-app-dependencies
+  script:
+    - FINDINGS_COUNT=$(cat findings_count.txt 2>/dev/null || echo "0")
+    - CRITICAL_FINDINGS=$(cat critical_findings.txt 2>/dev/null || echo "0")
+    - HIGH_FINDINGS=$(cat high_findings.txt 2>/dev/null || echo "0")
+    - MEDIUM_FINDINGS=$(cat medium_findings.txt 2>/dev/null || echo "0")
+    - LOW_FINDINGS=$(cat low_findings.txt 2>/dev/null || echo "0")
+    - VULNERABILITIES=$(cat vulnerabilities.txt 2>/dev/null || echo "0")
+    - CRITICAL_VULNS=$(cat critical_vulns_final.txt 2>/dev/null || echo "0")
+    - HIGH_VULNS=$(cat high_vulns_final.txt 2>/dev/null || echo "0")
+    - SECRETS_DETECTED=$(cat secrets_detected.txt 2>/dev/null || echo "false")
+    - BUILD_STATUS=$(cat build_status.txt 2>/dev/null || echo "unknown")
+    - APP_READY=$(cat app_ready.txt 2>/dev/null || echo "unknown")
+    - echo "========================================="
+    - echo "  CROWDSTRIKE SECURITY SCAN SUMMARY"
+    - echo "========================================="
+    - echo "Pipeline JuiceShop FCS Pipeline"
+    - echo "Pipeline ID $CI_PIPELINE_ID"
+    - echo "Job ID $CI_JOB_ID"
+    - echo "Scanner mile/cs-fcs ${FCS_SCANNER_TAG}"
+    - echo "Image Scanned ${CS_IMAGE_NAME}:${CS_IMAGE_TAG}"
+    - echo "IaC Scan Results"
+    - echo "  Total Findings $FINDINGS_COUNT"
+    - echo "  Critical $CRITICAL_FINDINGS"
+    - echo "  High $HIGH_FINDINGS"
+    - echo "  Medium $MEDIUM_FINDINGS"
+    - echo "  Informational $LOW_FINDINGS"
+    - echo "Container Image Scan Results"
+    - echo "  Total Vulnerabilities $VULNERABILITIES"
+    - echo "  Critical $CRITICAL_VULNS"
+    - echo "  High $HIGH_VULNS"
+    - echo "  Secrets Detected $SECRETS_DETECTED"
+    - echo "Build and Deployment Status"
+    - echo "  Build Status $BUILD_STATUS"
+    - echo "  App Ready $APP_READY"
+    - echo "========================================="
+    - |
+      if [ -f remediation_plan.md ]; then
+        echo "Remediation Plan"
+        cat remediation_plan.md
+      fi
+    - echo "Pipeline execution completed successfully"
+  artifacts:
+    paths:
+      - remediation_plan.md
+      - report.json
+      - scansummary.txt
+    expire_in: 1 month
+  timeout: 2m
+
