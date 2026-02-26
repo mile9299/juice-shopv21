@@ -40,23 +40,20 @@ jobs:
       - name: Generate IAC Scan Report with Claude
         if: always()
         run: |
-          # Create a JSON payload file
-          cat > request.json <<'EOF'
-{
-  "model": "claude-3-5-sonnet-20241022",
-  "max_tokens": 4096,
-  "messages": [{
-    "role": "user",
-    "content": "Please analyze the following Falcon Cloud Security IaC scan results and create a comprehensive security report.\n\nInclude:\n1. Executive Summary\n2. Critical and High severity findings breakdown\n3. Risk assessment and prioritization\n4. Remediation recommendations\n5. Compliance implications\n\nScan Results:\n"
-  }]
-}
-EOF
+          cat > request.json << 'EOFMARKER'
+          {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 4096,
+            "messages": [{
+              "role": "user",
+              "content": "Please analyze the following Falcon Cloud Security IaC scan results and create a comprehensive security report.\n\nInclude:\n1. Executive Summary\n2. Critical and High severity findings breakdown\n3. Risk assessment and prioritization\n4. Remediation recommendations\n5. Compliance implications\n\nScan Results:\n"
+            }]
+          }
+          EOFMARKER
           
-          # Append the scan results to the content field
           jq --rawfile scandata ./fcs-results/fcs-iac.json \
             '.messages[0].content += $scandata' request.json > request_final.json
           
-          # Call Claude API with the file
           curl https://api.anthropic.com/v1/messages \
             -H "content-type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
@@ -106,23 +103,20 @@ EOF
       - name: Generate Image Scan Report with Claude
         if: always()
         run: |
-          # Create a JSON payload file
-          cat > request.json <<'EOF'
-{
-  "model": "claude-3-5-sonnet-20241022",
-  "max_tokens": 4096,
-  "messages": [{
-    "role": "user",
-    "content": "Please analyze the following Falcon Cloud Security container image scan results and create a comprehensive security report.\n\nInclude:\n1. Executive Summary\n2. Vulnerability breakdown by severity (Critical, High, Medium, Low)\n3. Package vulnerabilities and affected components\n4. Base image security assessment\n5. Remediation recommendations with priority\n6. Best practices for container hardening\n\nImage Scan Results:\n"
-  }]
-}
-EOF
+          cat > request.json << 'EOFMARKER'
+          {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 4096,
+            "messages": [{
+              "role": "user",
+              "content": "Please analyze the following Falcon Cloud Security container image scan results and create a comprehensive security report.\n\nInclude:\n1. Executive Summary\n2. Vulnerability breakdown by severity (Critical, High, Medium, Low)\n3. Package vulnerabilities and affected components\n4. Base image security assessment\n5. Remediation recommendations with priority\n6. Best practices for container hardening\n\nImage Scan Results:\n"
+            }]
+          }
+          EOFMARKER
           
-          # Append the scan results to the content field
           jq --rawfile scandata ./image-scan-results/image-scan-results.json \
             '.messages[0].content += $scandata' request.json > request_final.json
           
-          # Call Claude API with the file
           curl https://api.anthropic.com/v1/messages \
             -H "content-type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
