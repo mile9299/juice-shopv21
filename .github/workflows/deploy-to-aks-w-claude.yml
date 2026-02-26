@@ -51,10 +51,10 @@ jobs:
           
           echo "Scan results file found, size: $(wc -c < ./fcs-results/fcs-iac.json) bytes"
           
-          # Create request JSON with Claude 3.5 Sonnet
+          # Create request JSON with Claude 3.5 Sonnet (correct model name)
           cat > request.json << 'EOFMARKER'
           {
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "claude-3-5-sonnet-20240620",
             "max_tokens": 8192,
             "messages": [{
               "role": "user",
@@ -191,10 +191,10 @@ jobs:
           
           echo "Scan results file found, size: $(wc -c < ./image-scan-results/image-scan-results.json) bytes"
           
-          # Create request JSON with Claude 3.5 Sonnet
+          # Create request JSON with Claude 3.5 Sonnet (correct model name)
           cat > request.json << 'EOFMARKER'
           {
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "claude-3-5-sonnet-20240620",
             "max_tokens": 8192,
             "messages": [{
               "role": "user",
