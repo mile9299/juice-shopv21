@@ -40,6 +40,18 @@ jobs:
       - name: Generate IAC Scan Report with Claude
         if: always()
         run: |
+          echo "=== Starting Claude Report Generation ==="
+          
+          # Check if scan results exist
+          if [ ! -f ./fcs-results/fcs-iac.json ]; then
+            echo "ERROR: Scan results file not found!"
+            ls -la ./fcs-results/ || echo "fcs-results directory doesn't exist"
+            exit 1
+          fi
+          
+          echo "Scan results file found, size: $(wc -c < ./fcs-results/fcs-iac.json) bytes"
+          
+          # Create request JSON
           cat > request.json << 'EOFMARKER'
           {
             "model": "claude-3-5-sonnet-20241022",
@@ -51,16 +63,81 @@ jobs:
           }
           EOFMARKER
           
+          echo "Request template created"
+          
+          # Append scan data
           jq --rawfile scandata ./fcs-results/fcs-iac.json \
             '.messages[0].content += $scandata' request.json > request_final.json
           
-          curl https://api.anthropic.com/v1/messages \
+          echo "Final request size: $(wc -c < request_final.json) bytes"
+          
+          # Call Claude API and capture response
+          echo "Calling Claude API..."
+          HTTP_CODE=$(curl -w "%{http_code}" -o response.json \
             -H "content-type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
-            -d @request_final.json | jq -r '.content[0].text' > ./fcs-results/iac-analysis-report.html
+            -d @request_final.json \
+            https://api.anthropic.com/v1/messages)
+          
+          echo "HTTP Response Code: $HTTP_CODE"
+          
+          # Check if request was successful
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "ERROR: API request failed with code $HTTP_CODE"
+            echo "Response:"
+            cat response.json
+            exit 1
+          fi
+          
+          # Extract the content
+          echo "Extracting HTML content..."
+          jq -r '.content[0].text' response.json > ./fcs-results/iac-analysis-report.html
+          
+          # Verify the output
+          if [ ! -s ./fcs-results/iac-analysis-report.html ]; then
+            echo "ERROR: Generated report is empty!"
+            echo "Full API Response:"
+            cat response.json
+            exit 1
+          fi
+          
+          echo "Report generated successfully!"
+          echo "Report size: $(wc -c < ./fcs-results/iac-analysis-report.html) bytes"
+          echo "First 500 characters:"
+          head -c 500 ./fcs-results/iac-analysis-report.html
+          
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Create Fallback Report if Claude Failed
+        if: always()
+        run: |
+          if [ ! -s ./fcs-results/iac-analysis-report.html ]; then
+            echo "Creating fallback HTML report..."
+            cat > ./fcs-results/iac-analysis-report.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>IaC Scan Results</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+              .container { background: white; padding: 30px; border-radius: 8px; }
+              h1 { color: #e01f3d; }
+              pre { background: #f5f5f5; padding: 20px; overflow-x: auto; border-radius: 4px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Infrastructure as Code Scan Results</h1>
+              <p><strong>Note:</strong> AI-generated report unavailable. Showing raw scan data.</p>
+              <h2>Raw Scan Data:</h2>
+              <pre>
+          EOF
+            cat ./fcs-results/fcs-iac.json >> ./fcs-results/iac-analysis-report.html
+            echo '</pre></div></body></html>' >> ./fcs-results/iac-analysis-report.html
+            echo "Fallback report created"
+          fi
 
       - name: Upload IAC Analysis Report
         uses: actions/upload-artifact@v4
@@ -103,6 +180,18 @@ jobs:
       - name: Generate Image Scan Report with Claude
         if: always()
         run: |
+          echo "=== Starting Claude Report Generation for Image Scan ==="
+          
+          # Check if scan results exist
+          if [ ! -f ./image-scan-results/image-scan-results.json ]; then
+            echo "ERROR: Scan results file not found!"
+            ls -la ./image-scan-results/ || echo "image-scan-results directory doesn't exist"
+            exit 1
+          fi
+          
+          echo "Scan results file found, size: $(wc -c < ./image-scan-results/image-scan-results.json) bytes"
+          
+          # Create request JSON
           cat > request.json << 'EOFMARKER'
           {
             "model": "claude-3-5-sonnet-20241022",
@@ -114,16 +203,81 @@ jobs:
           }
           EOFMARKER
           
+          echo "Request template created"
+          
+          # Append scan data
           jq --rawfile scandata ./image-scan-results/image-scan-results.json \
             '.messages[0].content += $scandata' request.json > request_final.json
           
-          curl https://api.anthropic.com/v1/messages \
+          echo "Final request size: $(wc -c < request_final.json) bytes"
+          
+          # Call Claude API and capture response
+          echo "Calling Claude API..."
+          HTTP_CODE=$(curl -w "%{http_code}" -o response.json \
             -H "content-type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
-            -d @request_final.json | jq -r '.content[0].text' > ./image-scan-results/image-analysis-report.html
+            -d @request_final.json \
+            https://api.anthropic.com/v1/messages)
+          
+          echo "HTTP Response Code: $HTTP_CODE"
+          
+          # Check if request was successful
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "ERROR: API request failed with code $HTTP_CODE"
+            echo "Response:"
+            cat response.json
+            exit 1
+          fi
+          
+          # Extract the content
+          echo "Extracting HTML content..."
+          jq -r '.content[0].text' response.json > ./image-scan-results/image-analysis-report.html
+          
+          # Verify the output
+          if [ ! -s ./image-scan-results/image-analysis-report.html ]; then
+            echo "ERROR: Generated report is empty!"
+            echo "Full API Response:"
+            cat response.json
+            exit 1
+          fi
+          
+          echo "Report generated successfully!"
+          echo "Report size: $(wc -c < ./image-scan-results/image-analysis-report.html) bytes"
+          echo "First 500 characters:"
+          head -c 500 ./image-scan-results/image-analysis-report.html
+          
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Create Fallback Report if Claude Failed
+        if: always()
+        run: |
+          if [ ! -s ./image-scan-results/image-analysis-report.html ]; then
+            echo "Creating fallback HTML report..."
+            cat > ./image-scan-results/image-analysis-report.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Container Image Scan Results</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+              .container { background: white; padding: 30px; border-radius: 8px; }
+              h1 { color: #e01f3d; }
+              pre { background: #f5f5f5; padding: 20px; overflow-x: auto; border-radius: 4px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Container Image Scan Results</h1>
+              <p><strong>Note:</strong> AI-generated report unavailable. Showing raw scan data.</p>
+              <h2>Raw Scan Data:</h2>
+              <pre>
+          EOF
+            cat ./image-scan-results/image-scan-results.json >> ./image-scan-results/image-analysis-report.html
+            echo '</pre></div></body></html>' >> ./image-scan-results/image-analysis-report.html
+            echo "Fallback report created"
+          fi
 
       - name: Upload Image Analysis Report
         uses: actions/upload-artifact@v4
