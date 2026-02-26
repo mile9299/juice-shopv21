@@ -78,7 +78,7 @@ jobs:
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
             -d @request_final.json \
-            https://genaihub.viper.eyrie.cloud/v1/messages)
+            https://genaihub.viper.eyrie.cloud/claude/v1/messages)
           
           echo "HTTP Response Code: $HTTP_CODE"
           
@@ -218,7 +218,7 @@ jobs:
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
             -d @request_final.json \
-            https://genaihub.viper.eyrie.cloud/v1/messages)
+            https://genaihub.viper.eyrie.cloud/claude/v1/messages)
           
           echo "HTTP Response Code: $HTTP_CODE"
           
