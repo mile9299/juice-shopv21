@@ -71,14 +71,14 @@ jobs:
           
           echo "Final request size: $(wc -c < request_final.json) bytes"
           
-          # Call Claude API via GenAI Hub and capture response
-          echo "Calling Claude 3.5 Sonnet via GenAI Hub..."
+          # Call Claude API via public Anthropic API
+          echo "Calling Claude 3.5 Sonnet via public Anthropic API..."
           HTTP_CODE=$(curl -w "%{http_code}" -o response.json \
             -H "content-type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
             -d @request_final.json \
-            https://genaihub.viper.eyrie.cloud/claude/v1/messages)
+            https://api.anthropic.com/v1/messages)
           
           echo "HTTP Response Code: $HTTP_CODE"
           
@@ -211,14 +211,14 @@ jobs:
           
           echo "Final request size: $(wc -c < request_final.json) bytes"
           
-          # Call Claude API via GenAI Hub and capture response
-          echo "Calling Claude 3.5 Sonnet via GenAI Hub..."
+          # Call Claude API via public Anthropic API
+          echo "Calling Claude 3.5 Sonnet via public Anthropic API..."
           HTTP_CODE=$(curl -w "%{http_code}" -o response.json \
             -H "content-type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
             -d @request_final.json \
-            https://genaihub.viper.eyrie.cloud/claude/v1/messages)
+            https://api.anthropic.com/v1/messages)
           
           echo "HTTP Response Code: $HTTP_CODE"
           
