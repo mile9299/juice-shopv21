@@ -40,38 +40,28 @@ jobs:
       - name: Generate IAC Scan Report with Claude
         if: always()
         run: |
-          # Read the scan results
-          SCAN_RESULTS=$(cat ./fcs-results/fcs-iac.json)
+          # Create a JSON payload file
+          cat > request.json <<'EOF'
+{
+  "model": "claude-3-5-sonnet-20241022",
+  "max_tokens": 4096,
+  "messages": [{
+    "role": "user",
+    "content": "Please analyze the following Falcon Cloud Security IaC scan results and create a comprehensive security report.\n\nInclude:\n1. Executive Summary\n2. Critical and High severity findings breakdown\n3. Risk assessment and prioritization\n4. Remediation recommendations\n5. Compliance implications\n\nScan Results:\n"
+  }]
+}
+EOF
           
-          # Create the prompt
-          PROMPT="Please analyze the following Falcon Cloud Security IaC scan results and create a comprehensive security report.
-
-          Include:
-          1. Executive Summary
-          2. Critical and High severity findings breakdown
-          3. Risk assessment and prioritization
-          4. Remediation recommendations
-          5. Compliance implications
-
-          Scan Results:
-          $SCAN_RESULTS"
+          # Append the scan results to the content field
+          jq --rawfile scandata ./fcs-results/fcs-iac.json \
+            '.messages[0].content += $scandata' request.json > request_final.json
           
-          # Escape the prompt for JSON
-          ESCAPED_PROMPT=$(echo "$PROMPT" | jq -Rs .)
-          
-          # Call Claude API
+          # Call Claude API with the file
           curl https://api.anthropic.com/v1/messages \
             -H "content-type: application/json" \
-            -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
-            -d '{
-              "model": "claude-3-5-sonnet-20241022",
-              "max_tokens": 4096,
-              "messages": [{
-                "role": "user",
-                "content": '"$ESCAPED_PROMPT"'
-              }]
-            }' | jq -r '.content[0].text' > ./fcs-results/iac-analysis-report.md
+            -d @request_final.json | jq -r '.content[0].text' > ./fcs-results/iac-analysis-report.md
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
@@ -81,21 +71,6 @@ jobs:
         with:
           name: iac-analysis-report
           path: ./fcs-results/iac-analysis-report.md
-
-      - name: Comment PR with IAC Report
-        if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const report = fs.readFileSync('./fcs-results/iac-analysis-report.md', 'utf8');
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '## 🔒 IaC Security Analysis Report\n\n' + report
-            });
 
   fcs-scan-image:
     name: Falcon Cloud Security Image Scan
@@ -131,39 +106,28 @@ jobs:
       - name: Generate Image Scan Report with Claude
         if: always()
         run: |
-          # Read the scan results
-          SCAN_RESULTS=$(cat ./image-scan-results/image-scan-results.json)
+          # Create a JSON payload file
+          cat > request.json <<'EOF'
+{
+  "model": "claude-3-5-sonnet-20241022",
+  "max_tokens": 4096,
+  "messages": [{
+    "role": "user",
+    "content": "Please analyze the following Falcon Cloud Security container image scan results and create a comprehensive security report.\n\nInclude:\n1. Executive Summary\n2. Vulnerability breakdown by severity (Critical, High, Medium, Low)\n3. Package vulnerabilities and affected components\n4. Base image security assessment\n5. Remediation recommendations with priority\n6. Best practices for container hardening\n\nImage Scan Results:\n"
+  }]
+}
+EOF
           
-          # Create the prompt
-          PROMPT="Please analyze the following Falcon Cloud Security container image scan results and create a comprehensive security report.
-
-          Include:
-          1. Executive Summary
-          2. Vulnerability breakdown by severity (Critical, High, Medium, Low)
-          3. Package vulnerabilities and affected components
-          4. Base image security assessment
-          5. Remediation recommendations with priority
-          6. Best practices for container hardening
-
-          Image Scan Results:
-          $SCAN_RESULTS"
+          # Append the scan results to the content field
+          jq --rawfile scandata ./image-scan-results/image-scan-results.json \
+            '.messages[0].content += $scandata' request.json > request_final.json
           
-          # Escape the prompt for JSON
-          ESCAPED_PROMPT=$(echo "$PROMPT" | jq -Rs .)
-          
-          # Call Claude API
+          # Call Claude API with the file
           curl https://api.anthropic.com/v1/messages \
             -H "content-type: application/json" \
-            -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
-            -d '{
-              "model": "claude-3-5-sonnet-20241022",
-              "max_tokens": 4096,
-              "messages": [{
-                "role": "user",
-                "content": '"$ESCAPED_PROMPT"'
-              }]
-            }' | jq -r '.content[0].text' > ./image-scan-results/image-analysis-report.md
+            -d @request_final.json | jq -r '.content[0].text' > ./image-scan-results/image-analysis-report.md
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
@@ -173,21 +137,6 @@ jobs:
         with:
           name: image-analysis-report
           path: ./image-scan-results/image-analysis-report.md
-
-      - name: Comment PR with Image Report
-        if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const report = fs.readFileSync('./image-scan-results/image-analysis-report.md', 'utf8');
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '## 🐳 Container Image Security Analysis Report\n\n' + report
-            });
 
   deploy-juice-shop:
     name: Deploy Juice Shop App to AKS
