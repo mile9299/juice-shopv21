@@ -1,0 +1,167 @@
+name: Deploy Juice Shop to AKS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  fcs-scan-iac:
+    name: Falcon Cloud Security IAC Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Falcon Cloud Security IaC Scan
+        id: fcs_scan
+        uses: crowdstrike/fcs-action@v2.0.2
+        with:
+          falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
+          falcon_region: 'us-1'
+          scan_type: 'iac'
+          path: 'git::https://github.com/mile9299/IAC_Examples.git'
+          report_formats: 'json'
+          upload_results: 'true'
+          output_path: './fcs-results/fcs-iac.json'
+          fail_on: 'critical=1,high=1'
+        env:
+          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+
+      - name: Upload IAC Scan Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iac-scan-results
+          path: ./fcs-results/fcs-iac.json
+
+      - name: Generate IAC Scan Report with Claude
+        if: always()
+        uses: anthropics/anthropic-action@v1
+        with:
+          api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: claude-3-5-sonnet-20241022
+          prompt: |
+            Please analyze the following Falcon Cloud Security IaC scan results and create a comprehensive security report.
+            
+            Include:
+            1. Executive Summary
+            2. Critical and High severity findings breakdown
+            3. Risk assessment and prioritization
+            4. Remediation recommendations
+            5. Compliance implications
+            
+            Scan Results:
+            ```json
+            $(cat ./fcs-results/fcs-iac.json)
+            ```
+          output-file: ./fcs-results/iac-analysis-report.md
+
+      - name: Upload IAC Analysis Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iac-analysis-report
+          path: ./fcs-results/iac-analysis-report.md
+
+  fcs-scan-image:
+    name: Falcon Cloud Security Image Scan
+    runs-on: ubuntu-latest
+    needs: fcs-scan-iac
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan Container Image
+        id: fcs_image_scan
+        uses: crowdstrike/fcs-action@v2.0.2
+        with:
+          falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
+          falcon_region: 'us-1'
+          scan_type: 'image'
+          image: 'scorpas/spooky'
+          report_formats: 'json'
+          upload_results: 'true'
+          output_path: './image-scan-results/image-scan-results.json'
+        env:
+          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+
+      - name: Upload Image Scan Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: image-scan-results
+          path: ./image-scan-results/image-scan-results.json
+
+      - name: Generate Image Scan Report with Claude
+        if: always()
+        uses: anthropics/anthropic-action@v1
+        with:
+          api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: claude-3-5-sonnet-20241022
+          prompt: |
+            Please analyze the following Falcon Cloud Security container image scan results and create a comprehensive security report.
+            
+            Include:
+            1. Executive Summary
+            2. Vulnerability breakdown by severity (Critical, High, Medium, Low)
+            3. Package vulnerabilities and affected components
+            4. Base image security assessment
+            5. Remediation recommendations with priority
+            6. Best practices for container hardening
+            
+            Image Scan Results:
+            ```json
+            $(cat ./image-scan-results/image-scan-results.json)
+            ```
+          output-file: ./image-scan-results/image-analysis-report.md
+
+      - name: Upload Image Analysis Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: image-analysis-report
+          path: ./image-scan-results/image-analysis-report.md
+
+  deploy-juice-shop:
+    name: Deploy Juice Shop App to AKS
+    runs-on: ubuntu-latest
+    needs: fcs-scan-image
+    env:
+      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+      AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
+      K8S_NAMESPACE: apps
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          resource-group: ${{ env.AZURE_RESOURCE_GROUP }}
+          cluster-name: ${{ env.AKS_CLUSTER_NAME }}
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Show kubectl cluster info
+        run: kubectl cluster-info
+
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -n $K8S_NAMESPACE -f k8s/deployment.yaml
+          kubectl apply -n $K8S_NAMESPACE -f k8s/service.yaml
+
+      - name: Wait for deployment rollout
+        run: |
+          kubectl rollout status deployment/juice-shop -n $K8S_NAMESPACE --timeout=120s
