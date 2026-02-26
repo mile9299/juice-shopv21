@@ -46,7 +46,7 @@ jobs:
             "max_tokens": 4096,
             "messages": [{
               "role": "user",
-              "content": "Please analyze the following Falcon Cloud Security IaC scan results and create a comprehensive security report.\n\nInclude:\n1. Executive Summary\n2. Critical and High severity findings breakdown\n3. Risk assessment and prioritization\n4. Remediation recommendations\n5. Compliance implications\n\nScan Results:\n"
+              "content": "Please analyze the following Falcon Cloud Security IaC scan results and create a comprehensive security report in HTML format.\n\nThe HTML should:\n- Be a complete, standalone HTML document with embedded CSS\n- Use professional styling with a clean, modern design\n- Include a header with the CrowdStrike logo reference and report title\n- Use color coding for severity levels (Critical=red, High=orange, Medium=yellow, Low=blue)\n- Include tables for findings with proper formatting\n- Be mobile-responsive\n\nInclude these sections:\n1. Executive Summary\n2. Critical and High severity findings breakdown\n3. Risk assessment and prioritization\n4. Remediation recommendations\n5. Compliance implications\n\nScan Results:\n"
             }]
           }
           EOFMARKER
@@ -58,7 +58,7 @@ jobs:
             -H "content-type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
-            -d @request_final.json | jq -r '.content[0].text' > ./fcs-results/iac-analysis-report.md
+            -d @request_final.json | jq -r '.content[0].text' > ./fcs-results/iac-analysis-report.html
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
@@ -67,7 +67,7 @@ jobs:
         if: always()
         with:
           name: iac-analysis-report
-          path: ./fcs-results/iac-analysis-report.md
+          path: ./fcs-results/iac-analysis-report.html
 
   fcs-scan-image:
     name: Falcon Cloud Security Image Scan
@@ -109,7 +109,7 @@ jobs:
             "max_tokens": 4096,
             "messages": [{
               "role": "user",
-              "content": "Please analyze the following Falcon Cloud Security container image scan results and create a comprehensive security report.\n\nInclude:\n1. Executive Summary\n2. Vulnerability breakdown by severity (Critical, High, Medium, Low)\n3. Package vulnerabilities and affected components\n4. Base image security assessment\n5. Remediation recommendations with priority\n6. Best practices for container hardening\n\nImage Scan Results:\n"
+              "content": "Please analyze the following Falcon Cloud Security container image scan results and create a comprehensive security report in HTML format.\n\nThe HTML should:\n- Be a complete, standalone HTML document with embedded CSS\n- Use professional styling with a clean, modern design\n- Include a header with the CrowdStrike logo reference and report title\n- Use color coding for severity levels (Critical=red, High=orange, Medium=yellow, Low=blue, Info=gray)\n- Include charts or visual representations where appropriate\n- Include tables for vulnerabilities with proper formatting\n- Be mobile-responsive\n- Include expandable sections for detailed findings\n\nInclude these sections:\n1. Executive Summary with key metrics\n2. Vulnerability breakdown by severity (Critical, High, Medium, Low)\n3. Package vulnerabilities and affected components in a sortable table\n4. Base image security assessment\n5. Remediation recommendations with priority\n6. Best practices for container hardening\n\nImage Scan Results:\n"
             }]
           }
           EOFMARKER
@@ -121,7 +121,7 @@ jobs:
             -H "content-type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
-            -d @request_final.json | jq -r '.content[0].text' > ./image-scan-results/image-analysis-report.md
+            -d @request_final.json | jq -r '.content[0].text' > ./image-scan-results/image-analysis-report.html
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
@@ -130,7 +130,7 @@ jobs:
         if: always()
         with:
           name: image-analysis-report
-          path: ./image-scan-results/image-analysis-report.md
+          path: ./image-scan-results/image-analysis-report.html
 
   deploy-juice-shop:
     name: Deploy Juice Shop App to AKS
