@@ -51,11 +51,11 @@ jobs:
           
           echo "Scan results file found, size: $(wc -c < ./fcs-results/fcs-iac.json) bytes"
           
-          # Create request JSON with Claude 3.5 Sonnet (correct model name)
+          # Create request JSON - trying claude-3-opus-20240229 (known to work)
           cat > request.json << 'EOFMARKER'
           {
-            "model": "claude-3-5-sonnet-20240620",
-            "max_tokens": 8192,
+            "model": "claude-3-opus-20240229",
+            "max_tokens": 4096,
             "messages": [{
               "role": "user",
               "content": "Please analyze the following Falcon Cloud Security IaC scan results and create a comprehensive security report in HTML format.\n\nThe HTML should:\n- Be a complete, standalone HTML document with embedded CSS\n- Use professional styling with a clean, modern design\n- Include a header with the CrowdStrike logo reference and report title\n- Use color coding for severity levels (Critical=red, High=orange, Medium=yellow, Low=blue)\n- Include tables for findings with proper formatting\n- Be mobile-responsive\n\nInclude these sections:\n1. Executive Summary\n2. Critical and High severity findings breakdown\n3. Risk assessment and prioritization\n4. Remediation recommendations\n5. Compliance implications\n\nScan Results:\n"
@@ -63,7 +63,7 @@ jobs:
           }
           EOFMARKER
           
-          echo "Request template created using Claude 3.5 Sonnet"
+          echo "Request template created using Claude 3 Opus"
           
           # Append scan data
           jq --rawfile scandata ./fcs-results/fcs-iac.json \
@@ -72,7 +72,7 @@ jobs:
           echo "Final request size: $(wc -c < request_final.json) bytes"
           
           # Call Claude API via public Anthropic API
-          echo "Calling Claude 3.5 Sonnet via public Anthropic API..."
+          echo "Calling Claude 3 Opus via public Anthropic API..."
           HTTP_CODE=$(curl -w "%{http_code}" -o response.json \
             -H "content-type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
@@ -191,11 +191,11 @@ jobs:
           
           echo "Scan results file found, size: $(wc -c < ./image-scan-results/image-scan-results.json) bytes"
           
-          # Create request JSON with Claude 3.5 Sonnet (correct model name)
+          # Create request JSON - trying claude-3-opus-20240229 (known to work)
           cat > request.json << 'EOFMARKER'
           {
-            "model": "claude-3-5-sonnet-20240620",
-            "max_tokens": 8192,
+            "model": "claude-3-opus-20240229",
+            "max_tokens": 4096,
             "messages": [{
               "role": "user",
               "content": "Please analyze the following Falcon Cloud Security container image scan results and create a comprehensive security report in HTML format.\n\nThe HTML should:\n- Be a complete, standalone HTML document with embedded CSS\n- Use professional styling with a clean, modern design\n- Include a header with the CrowdStrike logo reference and report title\n- Use color coding for severity levels (Critical=red, High=orange, Medium=yellow, Low=blue, Info=gray)\n- Include charts or visual representations where appropriate\n- Include tables for vulnerabilities with proper formatting\n- Be mobile-responsive\n- Include expandable sections for detailed findings\n\nInclude these sections:\n1. Executive Summary with key metrics\n2. Vulnerability breakdown by severity (Critical, High, Medium, Low)\n3. Package vulnerabilities and affected components in a sortable table\n4. Base image security assessment\n5. Remediation recommendations with priority\n6. Best practices for container hardening\n\nImage Scan Results:\n"
@@ -203,7 +203,7 @@ jobs:
           }
           EOFMARKER
           
-          echo "Request template created using Claude 3.5 Sonnet"
+          echo "Request template created using Claude 3 Opus"
           
           # Append scan data
           jq --rawfile scandata ./image-scan-results/image-scan-results.json \
@@ -212,7 +212,7 @@ jobs:
           echo "Final request size: $(wc -c < request_final.json) bytes"
           
           # Call Claude API via public Anthropic API
-          echo "Calling Claude 3.5 Sonnet via public Anthropic API..."
+          echo "Calling Claude 3 Opus via public Anthropic API..."
           HTTP_CODE=$(curl -w "%{http_code}" -o response.json \
             -H "content-type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
@@ -292,6 +292,7 @@ jobs:
     needs: fcs-scan-image
     env:
       AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+      AKS_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
       AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
       K8S_NAMESPACE: apps
     steps:
