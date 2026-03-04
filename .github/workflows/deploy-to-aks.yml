@@ -1,4 +1,4 @@
-name: Deploy Juice Shop to AKS
+name: Deploy Juice Shop to AKS Cluster
 
 on:
   push:
