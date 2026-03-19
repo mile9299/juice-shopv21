@@ -58,7 +58,7 @@ pipeline:
       type: String
       description: ""
       required: false
-      value: 2.1.5
+      value: 2.2.0
     - name: FALCON_CLIENT_ID
       type: String
       description: ""
