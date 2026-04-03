@@ -17,7 +17,7 @@ jobs:
 
       - name: Falcon Cloud Security IaC Scan
         id: fcs_scan
-        uses: crowdstrike/fcs-action@v2.0.2
+        uses: crowdstrike/fcs-action@v2.2.0
         with:
           falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
           falcon_region: 'us-1'
@@ -42,7 +42,7 @@ jobs:
 
       - name: Scan Container Image
         id: fcs_image_scan
-        uses: crowdstrike/fcs-action@v2.0.2
+        uses: crowdstrike/fcs-action@v2.2.0
         with:
           falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
           falcon_region: 'us-1'
