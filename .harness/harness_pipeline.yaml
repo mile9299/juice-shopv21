@@ -219,7 +219,7 @@ pipeline:
                   timeout: 5m
               - step:
                   type: Run
-                  name: Build Container Image with Docker
+                  name: Crowdstrike Image Assessment Prep
                   identifier: build_container_image_docker
                   spec:
                     connectorRef: account.harnessImage
@@ -289,7 +289,7 @@ pipeline:
                           type: Ignore
               - step:
                   type: Run
-                  name: Scan CrowdStrike Container Image Scan
+                  name: CrowdStrike Image Assessment Scan
                   identifier: scan_container_image_python
                   spec:
                     connectorRef: account.harnessImage
