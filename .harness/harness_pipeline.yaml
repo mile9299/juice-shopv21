@@ -153,13 +153,6 @@ pipeline:
 
                       export SCAN_STATUS="success"
                     privileged: true
-                    resources:
-                      limits:
-                        memory: 1Gi
-                        cpu: 1000m
-                      requests:
-                        memory: 512Mi
-                        cpu: 500m
                     envVariables:
                       DOCKERHUB_USERNAME: <+pipeline.variables.DOCKER_USERNAME>
                       DOCKERHUB_PASSWORD: <+secrets.getValue("account.dockerhub_password")>
@@ -226,7 +219,7 @@ pipeline:
                   timeout: 5m
               - step:
                   type: Run
-                  name: Prep for Crowdstrike Image Assessment
+                  name: Build Container Image with Docker
                   identifier: build_container_image_docker
                   spec:
                     connectorRef: account.harnessImage
@@ -296,7 +289,7 @@ pipeline:
                           type: Ignore
               - step:
                   type: Run
-                  name: CrowdStrike Image Assessment Scan
+                  name: Scan CrowdStrike Container Image Scan
                   identifier: scan_container_image_python
                   spec:
                     connectorRef: account.harnessImage
@@ -562,7 +555,7 @@ pipeline:
                           type: Ignore
               - step:
                   type: Run
-                  name: Process Image Assessment Scan Results
+                  name: Process Container Scan Results
                   identifier: process_container_results
                   spec:
                     connectorRef: account.harnessImage
