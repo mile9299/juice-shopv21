@@ -48,7 +48,7 @@ pipeline:
       type: String
       description: ""
       required: false
-      value: .
+      value: git:https://github.com/mile9299/IAC_Examples.git
     - name: FCS_SCANNER_IMAGE
       type: String
       description: ""
