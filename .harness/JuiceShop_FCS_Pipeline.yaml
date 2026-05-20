@@ -663,8 +663,6 @@ pipeline:
                     image: alpine
                     shell: Sh
                     command: |-
-                      apk add --no-cache curl
-
                       echo "=== Generating HTML Security Report ==="
 
                       PIPELINE_NAME="<+pipeline.name>"
