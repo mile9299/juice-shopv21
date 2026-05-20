@@ -153,6 +153,13 @@ pipeline:
 
                       export SCAN_STATUS="success"
                     privileged: true
+                    resources:
+                      limits:
+                        memory: 1Gi
+                        cpu: 1000m
+                      requests:
+                        memory: 512Mi
+                        cpu: 500m
                     envVariables:
                       DOCKERHUB_USERNAME: <+pipeline.variables.DOCKER_USERNAME>
                       DOCKERHUB_PASSWORD: <+secrets.getValue("account.dockerhub_password")>
