@@ -142,7 +142,6 @@ pipeline:
 
                       cat scansummary.txt
 
-                      # Copy to shared path
                       mkdir -p /harness/scan-results
                       cp scansummary.txt /harness/scan-results/ 2>/dev/null || true
 
@@ -174,11 +173,11 @@ pipeline:
                     image: alpine
                     shell: Sh
                     command: |-
+                      set +x
                       apk add --no-cache jq
 
                       echo "=== Processing IaC Scan Results ==="
 
-                      # Check shared path first
                       if [ -f /harness/scan-results/scansummary.txt ]; then
                         cp /harness/scan-results/scansummary.txt .
                       fi
@@ -245,17 +244,13 @@ pipeline:
                         exit 1
                       fi
 
-                      # Login to Docker Hub
                       echo "$DOCKERHUB_PASSWORD" | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
 
-                      # Build the image
                       echo "Building image: ${CONTAINER_REPO}:${CONTAINER_TAG}"
                       docker build -t "${CONTAINER_REPO}:${CONTAINER_TAG}" -f Dockerfile .
 
                       if [ $? -eq 0 ]; then
                         echo "✓ Container image built successfully"
-
-                        # Push the image
                         echo "Pushing image to Docker Hub..."
                         docker push "${CONTAINER_REPO}:${CONTAINER_TAG}"
 
@@ -299,10 +294,8 @@ pipeline:
                       set +x
                       echo "Starting CrowdStrike Container Image Scan..."
 
-                      # Create shared results directory
                       mkdir -p /harness/scan-results
 
-                      # Install required system packages
                       echo "Installing system dependencies..."
                       apt-get update && apt-get install -y \
                         git \
@@ -311,7 +304,6 @@ pipeline:
                         ca-certificates \
                         curl
 
-                      # Install Python packages
                       echo "Installing Python dependencies..."
                       pip3 install --no-cache-dir --upgrade pip
                       pip3 install --no-cache-dir \
@@ -319,12 +311,10 @@ pipeline:
                         crowdstrike-falconpy \
                         retry
 
-                      # Start Docker daemon in background
                       echo "Starting Docker daemon..."
                       dockerd > /var/log/dockerd.log 2>&1 &
                       DOCKER_PID=$!
 
-                      # Wait for Docker to be ready
                       echo "Waiting for Docker daemon to start..."
                       for i in $(seq 1 45); do
                         if docker info >/dev/null 2>&1; then
@@ -333,7 +323,6 @@ pipeline:
                         fi
                         if [ $i -eq 45 ]; then
                           echo "Error: Docker daemon failed to start after 90 seconds"
-                          echo "Docker daemon logs:"
                           cat /var/log/dockerd.log || echo "No logs available"
 
                           export TOTAL_VULNERABILITIES=0
@@ -351,24 +340,19 @@ pipeline:
                         sleep 2
                       done
 
-                      # Verify Docker is working
-                      echo "Verifying Docker installation..."
                       docker --version
                       docker info
 
-                      # Login to Docker Hub if credentials are provided
                       if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_PASSWORD" ]; then
                         echo "Logging into Docker Hub..."
                         echo "$DOCKERHUB_PASSWORD" | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
                       fi
 
-                      # Pull the image to scan
                       echo "Pulling image to scan: ${IMAGE_NAME}:${IMAGE_TAG}"
                       docker pull "${IMAGE_NAME}:${IMAGE_TAG}" || {
-                        echo "Warning: Failed to pull image, it may already exist locally or be inaccessible"
+                        echo "Warning: Failed to pull image"
                       }
 
-                      # Clone the container-image-scan repository
                       echo "Cloning CrowdStrike container-image-scan repository..."
                       if [ ! -d container-image-scan ]; then
                         git clone https://github.com/crowdstrike/container-image-scan
@@ -385,12 +369,8 @@ pipeline:
                       echo "=== Scan Configuration ==="
                       echo "Image: ${IMAGE_REPO}:${IMAGE_TAG_VALUE}"
                       echo "Region: $FALCON_REGION"
-                      echo "Client ID: (hidden for security)"
                       echo "=========================="
-                      echo ""
 
-                      # Verify Python can import docker module
-                      echo "Verifying Python Docker module..."
                       python3 -c "import docker; print(f'Docker module version: {docker.__version__}')" || {
                         echo "Error: Failed to import docker module"
                         export TOTAL_VULNERABILITIES=0
@@ -406,7 +386,6 @@ pipeline:
                         exit 0
                       }
 
-                      # Run the scan
                       echo "Running container image scan..."
                       set +e
                       python3 container-image-scan/cs_scanimage.py \
@@ -417,22 +396,15 @@ pipeline:
                       scan_exit_code=$?
                       set -e
 
-                      echo ""
                       echo "Scan completed with exit code: $scan_exit_code"
 
-                      # Cleanup Docker daemon
                       echo "Stopping Docker daemon..."
                       kill $DOCKER_PID 2>/dev/null || true
                       wait $DOCKER_PID 2>/dev/null || true
 
-                      # Process the report
                       if [ -f "report.json" ]; then
                         echo "✓ Scan report generated"
-
                         cp report.json /harness/scan-results/
-
-                        echo ""
-                        echo "=== Scan Report ==="
                         cat report.json | jq '.' || cat report.json
 
                         echo "# Vulnerability Remediation Plan" > remediation_plan.md
@@ -442,24 +414,13 @@ pipeline:
                         echo "" >> remediation_plan.md
 
                         if jq -e '.vulnerabilities' report.json > /dev/null 2>&1; then
-                          echo ""
-                          echo "Vulnerabilities found in the image:"
                           jq -r '.vulnerabilities[] | select(.severity == "HIGH" or .severity == "CRITICAL") | "- \(.severity): \(.cve_id) in \(.package_name) \(.package_version)"' report.json || true
-
                           echo "## High and Critical Vulnerabilities" >> remediation_plan.md
                           jq -r '.vulnerabilities[] | select(.severity == "HIGH" or .severity == "CRITICAL") | "- **\(.severity)**: \(.cve_id) in \(.package_name) \(.package_version)\n  - Description: \(.description // "N/A")\n  - Remediation: Update to latest version or apply patch\n"' report.json >> remediation_plan.md || true
 
                           TOTAL_VULNS=$(jq '[.vulnerabilities[]] | length' report.json || echo 0)
                           CRITICAL_VULNS=$(jq '[.vulnerabilities[] | select(.severity == "CRITICAL")] | length' report.json || echo 0)
                           HIGH_VULNS=$(jq '[.vulnerabilities[] | select(.severity == "HIGH")] | length' report.json || echo 0)
-                          MEDIUM_VULNS=$(jq '[.vulnerabilities[] | select(.severity == "MEDIUM")] | length' report.json || echo 0)
-
-                          echo ""
-                          echo "Vulnerability Summary:"
-                          echo "  Total: $TOTAL_VULNS"
-                          echo "  Critical: $CRITICAL_VULNS"
-                          echo "  High: $HIGH_VULNS"
-                          echo "  Medium: $MEDIUM_VULNS"
 
                           export TOTAL_VULNERABILITIES=$TOTAL_VULNS
                           export CRITICAL_VULNERABILITIES=$CRITICAL_VULNS
@@ -469,39 +430,27 @@ pipeline:
                           echo "$CRITICAL_VULNS" > /harness/scan-results/critical_vulns.txt
                           echo "$HIGH_VULNS" > /harness/scan-results/high_vulns.txt
                         else
-                          echo "No vulnerabilities found"
                           export TOTAL_VULNERABILITIES=0
                           export CRITICAL_VULNERABILITIES=0
                           export HIGH_VULNERABILITIES=0
-
                           echo "0" > /harness/scan-results/total_vulns.txt
                           echo "0" > /harness/scan-results/critical_vulns.txt
                           echo "0" > /harness/scan-results/high_vulns.txt
                         fi
 
                         if jq -e '.secrets' report.json > /dev/null 2>&1; then
-                          echo ""
-                          echo "WARNING: Secrets were detected in the image:"
                           jq -r '.secrets[] | "- Secret type: \(.type) in \(.path)"' report.json || true
-
                           echo "" >> remediation_plan.md
                           echo "## Detected Secrets" >> remediation_plan.md
                           jq -r '.secrets[] | "- Secret type: \(.type) found in \(.path)\n  - Action: Remove this secret and use secure storage methods instead\n"' report.json >> remediation_plan.md || true
-
                           export SECRETS_FOUND="true"
                           echo "true" > /harness/scan-results/secrets_found.txt
                         else
-                          echo "No secrets were detected in the image"
                           export SECRETS_FOUND="false"
                           echo "false" > /harness/scan-results/secrets_found.txt
                         fi
 
                         cp remediation_plan.md /harness/scan-results/
-
-                        echo ""
-                        echo "=== Remediation Plan ==="
-                        cat remediation_plan.md
-
                       else
                         echo "Error: Scan report not generated"
                         echo "# No security findings to report" > remediation_plan.md
@@ -518,7 +467,6 @@ pipeline:
                         echo "false" > /harness/scan-results/secrets_found.txt
                       fi
 
-                      echo ""
                       echo "✓ Container image scan completed"
                     privileged: true
                     envVariables:
@@ -550,11 +498,11 @@ pipeline:
                     image: alpine
                     shell: Sh
                     command: |-
+                      set +x
                       apk add --no-cache jq
 
                       echo "=== Processing Container Scan Results ==="
 
-                      # Check if report exists in shared path
                       if [ -f /harness/scan-results/report.json ]; then
                         cp /harness/scan-results/report.json .
                       fi
@@ -581,7 +529,6 @@ pipeline:
                         TOTAL=$(jq '[.vulnerabilities[]] | length' report.json 2>/dev/null || echo 0)
                         CRITICAL=$(jq '[.vulnerabilities[] | select(.severity == "CRITICAL")] | length' report.json 2>/dev/null || echo 0)
                         HIGH=$(jq '[.vulnerabilities[] | select(.severity == "HIGH")] | length' report.json 2>/dev/null || echo 0)
-                        MEDIUM=$(jq '[.vulnerabilities[] | select(.severity == "MEDIUM")] | length' report.json 2>/dev/null || echo 0)
 
                         SECRETS=$(jq '[.secrets[]] | length' report.json 2>/dev/null || echo 0)
                         if [ "$SECRETS" -gt 0 ]; then
@@ -617,9 +564,9 @@ pipeline:
                     image: node:18-alpine
                     shell: Sh
                     command: |-
+                      set +x
                       echo "Verifying Juice Shop application..."
 
-                      # Check if package.json exists
                       if [ ! -f package.json ]; then
                         echo "Error: package.json not found"
                         export APP_READY="false"
@@ -629,19 +576,16 @@ pipeline:
                       echo "Installing dependencies..."
                       npm install --production
 
-                      # Check available scripts
                       echo ""
                       echo "Available npm scripts:"
                       npm run 2>&1 | grep -A 100 "Lifecycle scripts" || echo "No scripts found"
 
-                      # Run npm audit to show vulnerabilities
                       echo ""
                       echo "Running security audit..."
                       npm audit --production || true
 
                       echo ""
                       echo "✓ Application dependencies verified"
-                      echo "Note: Application is containerized and runs via Docker"
                       export APP_READY="true"
                     envVariables:
                       DOCKER_PORT: <+pipeline.variables.DOCKER_PORT>
@@ -663,27 +607,26 @@ pipeline:
                     image: alpine
                     shell: Sh
                     command: |-
-                      apk add --no-cache curl
+                      set +x
+                      apk add --no-cache curl > /dev/null 2>&1
 
                       echo "=== Generating HTML Security Report ==="
 
+                      # Collect variables
                       PIPELINE_NAME="<+pipeline.name>"
                       EXECUTION_ID="<+pipeline.executionId>"
                       SCANNER_VERSION="mile/cs-fcs:2.2.0"
                       IMAGE_SCANNED="<+pipeline.variables.CS_IMAGE_NAME>:<+pipeline.variables.CS_IMAGE_TAG>"
                       REPORT_DATE=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
-
                       IAC_TOTAL="<+execution.steps.process_iac_results.output.outputVariables.FINDINGS_COUNT>"
                       IAC_CRITICAL="<+execution.steps.process_iac_results.output.outputVariables.CRITICAL_FINDINGS>"
                       IAC_HIGH="<+execution.steps.process_iac_results.output.outputVariables.HIGH_FINDINGS>"
                       IAC_MEDIUM="<+execution.steps.process_iac_results.output.outputVariables.MEDIUM_FINDINGS>"
                       IAC_INFO="<+execution.steps.process_iac_results.output.outputVariables.LOW_FINDINGS>"
-
                       CONT_TOTAL="<+execution.steps.process_container_results.output.outputVariables.VULNERABILITIES>"
                       CONT_CRITICAL="<+execution.steps.process_container_results.output.outputVariables.CRITICAL_VULNS>"
                       CONT_HIGH="<+execution.steps.process_container_results.output.outputVariables.HIGH_VULNS>"
                       SECRETS_DETECTED="<+execution.steps.process_container_results.output.outputVariables.SECRETS_DETECTED>"
-
                       BUILD_STATUS="<+execution.steps.build_container_image_docker.output.outputVariables.BUILD_STATUS>"
                       APP_READY="<+execution.steps.verify_app_dependencies.output.outputVariables.APP_READY>"
 
@@ -701,29 +644,27 @@ pipeline:
                         RISK_COLOR="#ffc107"
                       fi
 
-                      # Secrets badge
+                      # Badges
                       if [ "$SECRETS_DETECTED" = "true" ]; then
                         SECRETS_BADGE='<span style="background:#dc3545;color:#fff;padding:3px 10px;border-radius:12px;font-weight:bold;">&#9888; DETECTED</span>'
                       else
                         SECRETS_BADGE='<span style="background:#198754;color:#fff;padding:3px 10px;border-radius:12px;font-weight:bold;">&#10003; NONE</span>'
                       fi
 
-                      # Build status badge
                       if [ "$BUILD_STATUS" = "success" ]; then
                         BUILD_BADGE='<span style="background:#198754;color:#fff;padding:3px 10px;border-radius:12px;font-weight:bold;">&#10003; SUCCESS</span>'
                       else
                         BUILD_BADGE='<span style="background:#dc3545;color:#fff;padding:3px 10px;border-radius:12px;font-weight:bold;">&#10007; '"$BUILD_STATUS"'</span>'
                       fi
 
-                      # App ready badge
                       if [ "$APP_READY" = "true" ]; then
                         APP_BADGE='<span style="background:#198754;color:#fff;padding:3px 10px;border-radius:12px;font-weight:bold;">&#10003; READY</span>'
                       else
                         APP_BADGE='<span style="background:#ffc107;color:#000;padding:3px 10px;border-radius:12px;font-weight:bold;">&#9888; NOT READY</span>'
                       fi
 
-                      # Read remediation plan if available
-                      REMEDIATION_HTML=""
+                      # Remediation plan
+                      REMEDIATION_HTML='<p style="color:#8b949e;">No remediation items identified.</p>'
                       if [ -f /harness/scan-results/remediation_plan.md ]; then
                         REMEDIATION_HTML=$(cat /harness/scan-results/remediation_plan.md | \
                           sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' | \
@@ -736,303 +677,118 @@ pipeline:
 
                       mkdir -p /harness/scan-results
 
-                      cat > /harness/scan-results/crowdstrike_security_report.html << HTMLEOF
-                      <!DOCTYPE html>
-                      <html lang="en">
-                      <head>
-                        <meta charset="UTF-8" />
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-                        <title>CrowdStrike Security Scan Report</title>
-                        <style>
-                          * { box-sizing: border-box; margin: 0; padding: 0; }
-                          body {
-                            font-family: 'Segoe UI', Arial, sans-serif;
-                            background: #0d1117;
-                            color: #c9d1d9;
-                            min-height: 100vh;
-                          }
-                          .header {
-                            background: linear-gradient(135deg, #e63946 0%, #1a1a2e 60%);
-                            padding: 36px 48px 28px 48px;
-                            display: flex;
-                            align-items: center;
-                            gap: 24px;
-                            border-bottom: 3px solid #e63946;
-                          }
-                          .header-logo {
-                            font-size: 2.8rem;
-                            font-weight: 900;
-                            color: #fff;
-                            letter-spacing: -1px;
-                          }
-                          .header-logo span { color: #e63946; }
-                          .header-info { flex: 1; }
-                          .header-info h1 {
-                            font-size: 1.6rem;
-                            color: #fff;
-                            font-weight: 700;
-                            margin-bottom: 4px;
-                          }
-                          .header-info p { color: #adb5bd; font-size: 0.92rem; }
-                          .risk-badge {
-                            background: ${RISK_COLOR};
-                            color: #fff;
-                            padding: 10px 28px;
-                            border-radius: 24px;
-                            font-size: 1.1rem;
-                            font-weight: 800;
-                            letter-spacing: 1px;
-                            text-transform: uppercase;
-                            box-shadow: 0 2px 12px rgba(0,0,0,0.4);
-                          }
-                          .container { max-width: 1100px; margin: 0 auto; padding: 36px 24px; }
-                          .meta-grid {
-                            display: grid;
-                            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-                            gap: 16px;
-                            margin-bottom: 32px;
-                          }
-                          .meta-card {
-                            background: #161b22;
-                            border: 1px solid #30363d;
-                            border-radius: 10px;
-                            padding: 16px 20px;
-                          }
-                          .meta-card .label {
-                            font-size: 0.75rem;
-                            color: #8b949e;
-                            text-transform: uppercase;
-                            letter-spacing: 0.08em;
-                            margin-bottom: 6px;
-                          }
-                          .meta-card .value {
-                            font-size: 0.97rem;
-                            color: #e6edf3;
-                            font-weight: 600;
-                            word-break: break-all;
-                          }
-                          .section {
-                            background: #161b22;
-                            border: 1px solid #30363d;
-                            border-radius: 12px;
-                            margin-bottom: 28px;
-                            overflow: hidden;
-                          }
-                          .section-header {
-                            background: #21262d;
-                            padding: 14px 24px;
-                            border-bottom: 1px solid #30363d;
-                            display: flex;
-                            align-items: center;
-                            gap: 10px;
-                          }
-                          .section-header h2 {
-                            font-size: 1.05rem;
-                            color: #e6edf3;
-                            font-weight: 700;
-                          }
-                          .section-icon { font-size: 1.2rem; }
-                          .section-body { padding: 24px; }
-                          .stats-grid {
-                            display: grid;
-                            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-                            gap: 16px;
-                          }
-                          .stat-card {
-                            background: #0d1117;
-                            border: 1px solid #30363d;
-                            border-radius: 10px;
-                            padding: 18px 12px;
-                            text-align: center;
-                          }
-                          .stat-card .stat-number {
-                            font-size: 2.2rem;
-                            font-weight: 900;
-                            line-height: 1;
-                            margin-bottom: 6px;
-                          }
-                          .stat-card .stat-label {
-                            font-size: 0.78rem;
-                            color: #8b949e;
-                            text-transform: uppercase;
-                            letter-spacing: 0.07em;
-                          }
-                          .color-critical { color: #dc3545; }
-                          .color-high     { color: #fd7e14; }
-                          .color-medium   { color: #ffc107; }
-                          .color-info     { color: #0dcaf0; }
-                          .color-total    { color: #e6edf3; }
-                          .color-success  { color: #198754; }
-                          .status-row {
-                            display: flex;
-                            align-items: center;
-                            justify-content: space-between;
-                            padding: 12px 0;
-                            border-bottom: 1px solid #21262d;
-                          }
-                          .status-row:last-child { border-bottom: none; }
-                          .status-label { color: #8b949e; font-size: 0.95rem; }
-                          .remediation-box {
-                            background: #0d1117;
-                            border: 1px solid #30363d;
-                            border-radius: 8px;
-                            padding: 18px 20px;
-                            font-size: 0.92rem;
-                            line-height: 1.7;
-                            color: #c9d1d9;
-                          }
-                          .remediation-box h3 { color: #e6edf3; margin-bottom: 8px; }
-                          .remediation-box h4 { color: #e63946; margin: 12px 0 4px 0; }
-                          .remediation-box li { margin-left: 18px; margin-bottom: 4px; }
-                          .footer {
-                            text-align: center;
-                            color: #484f58;
-                            font-size: 0.82rem;
-                            padding: 24px 0 12px 0;
-                            border-top: 1px solid #21262d;
-                            margin-top: 12px;
-                          }
-                          .footer strong { color: #e63946; }
-                        </style>
-                      </head>
-                      <body>
-                        <div class="header">
-                          <div class="header-logo">Crowd<span>Strike</span></div>
-                          <div class="header-info">
-                            <h1>Security Scan Report</h1>
-                            <p>Falcon Cloud Security &mdash; Infrastructure &amp; Container Analysis</p>
-                          </div>
-                          <div class="risk-badge">Overall Risk: ${OVERALL_RISK}</div>
-                        </div>
+                      # Write HTML to a script file first to avoid shell echo verbosity
+                      REPORT_FILE="/harness/scan-results/crowdstrike_security_report.html"
 
-                        <div class="container">
+                      # Use printf to write the HTML silently
+                      printf '%s\n' '<!DOCTYPE html>' > "$REPORT_FILE"
+                      printf '%s\n' '<html lang="en">' >> "$REPORT_FILE"
+                      printf '%s\n' '<head>' >> "$REPORT_FILE"
+                      printf '%s\n' '  <meta charset="UTF-8" />' >> "$REPORT_FILE"
+                      printf '%s\n' '  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>' >> "$REPORT_FILE"
+                      printf '%s\n' '  <title>CrowdStrike Security Scan Report</title>' >> "$REPORT_FILE"
+                      printf '%s\n' '  <style>' >> "$REPORT_FILE"
+                      printf '%s\n' '    * { box-sizing: border-box; margin: 0; padding: 0; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    body { font-family: "Segoe UI", Arial, sans-serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .header { background: linear-gradient(135deg, #e63946 0%, #1a1a2e 60%); padding: 36px 48px 28px 48px; display: flex; align-items: center; gap: 24px; border-bottom: 3px solid #e63946; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .header-logo { font-size: 2.8rem; font-weight: 900; color: #fff; letter-spacing: -1px; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .header-logo span { color: #e63946; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .header-info { flex: 1; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .header-info h1 { font-size: 1.6rem; color: #fff; font-weight: 700; margin-bottom: 4px; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .header-info p { color: #adb5bd; font-size: 0.92rem; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .risk-badge { color: #fff; padding: 10px 28px; border-radius: 24px; font-size: 1.1rem; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; box-shadow: 0 2px 12px rgba(0,0,0,0.4); }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .container { max-width: 1100px; margin: 0 auto; padding: 36px 24px; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 32px; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .meta-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 16px 20px; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .meta-card .label { font-size: 0.75rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .meta-card .value { font-size: 0.97rem; color: #e6edf3; font-weight: 600; word-break: break-all; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .section { background: #161b22; border: 1px solid #30363d; border-radius: 12px; margin-bottom: 28px; overflow: hidden; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .section-header { background: #21262d; padding: 14px 24px; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 10px; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .section-header h2 { font-size: 1.05rem; color: #e6edf3; font-weight: 700; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .section-icon { font-size: 1.2rem; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .section-body { padding: 24px; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 16px; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .stat-card { background: #0d1117; border: 1px solid #30363d; border-radius: 10px; padding: 18px 12px; text-align: center; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .stat-card .stat-number { font-size: 2.2rem; font-weight: 900; line-height: 1; margin-bottom: 6px; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .stat-card .stat-label { font-size: 0.78rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.07em; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .color-critical { color: #dc3545; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .color-high { color: #fd7e14; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .color-medium { color: #ffc107; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .color-info { color: #0dcaf0; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .color-total { color: #e6edf3; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .status-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #21262d; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .status-row:last-child { border-bottom: none; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .status-label { color: #8b949e; font-size: 0.95rem; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .remediation-box { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 18px 20px; font-size: 0.92rem; line-height: 1.7; color: #c9d1d9; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .remediation-box h3 { color: #e6edf3; margin-bottom: 8px; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .remediation-box h4 { color: #e63946; margin: 12px 0 4px 0; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .remediation-box li { margin-left: 18px; margin-bottom: 4px; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .footer { text-align: center; color: #484f58; font-size: 0.82rem; padding: 24px 0 12px 0; border-top: 1px solid #21262d; margin-top: 12px; }' >> "$REPORT_FILE"
+                      printf '%s\n' '    .footer strong { color: #e63946; }' >> "$REPORT_FILE"
+                      printf '%s\n' '  </style>' >> "$REPORT_FILE"
+                      printf '%s\n' '</head>' >> "$REPORT_FILE"
+                      printf '%s\n' '<body>' >> "$REPORT_FILE"
 
-                          <div class="meta-grid">
-                            <div class="meta-card">
-                              <div class="label">Pipeline</div>
-                              <div class="value">${PIPELINE_NAME}</div>
-                            </div>
-                            <div class="meta-card">
-                              <div class="label">Execution ID</div>
-                              <div class="value">${EXECUTION_ID}</div>
-                            </div>
-                            <div class="meta-card">
-                              <div class="label">Image Scanned</div>
-                              <div class="value">${IMAGE_SCANNED}</div>
-                            </div>
-                            <div class="meta-card">
-                              <div class="label">Scanner</div>
-                              <div class="value">${SCANNER_VERSION}</div>
-                            </div>
-                            <div class="meta-card">
-                              <div class="label">Report Generated</div>
-                              <div class="value">${REPORT_DATE}</div>
-                            </div>
-                          </div>
+                      # Header with dynamic risk color
+                      printf '<div class="header">\n' >> "$REPORT_FILE"
+                      printf '  <div class="header-logo">Crowd<span>Strike</span></div>\n' >> "$REPORT_FILE"
+                      printf '  <div class="header-info"><h1>Security Scan Report</h1><p>Falcon Cloud Security &mdash; Infrastructure &amp; Container Analysis</p></div>\n' >> "$REPORT_FILE"
+                      printf '  <div class="risk-badge" style="background:%s;">Overall Risk: %s</div>\n' "$RISK_COLOR" "$OVERALL_RISK" >> "$REPORT_FILE"
+                      printf '</div>\n' >> "$REPORT_FILE"
 
-                          <div class="section">
-                            <div class="section-header">
-                              <span class="section-icon">&#128196;</span>
-                              <h2>Infrastructure as Code (IaC) Scan Results</h2>
-                            </div>
-                            <div class="section-body">
-                              <div class="stats-grid">
-                                <div class="stat-card">
-                                  <div class="stat-number color-total">${IAC_TOTAL}</div>
-                                  <div class="stat-label">Total Findings</div>
-                                </div>
-                                <div class="stat-card">
-                                  <div class="stat-number color-critical">${IAC_CRITICAL}</div>
-                                  <div class="stat-label">Critical</div>
-                                </div>
-                                <div class="stat-card">
-                                  <div class="stat-number color-high">${IAC_HIGH}</div>
-                                  <div class="stat-label">High</div>
-                                </div>
-                                <div class="stat-card">
-                                  <div class="stat-number color-medium">${IAC_MEDIUM}</div>
-                                  <div class="stat-label">Medium</div>
-                                </div>
-                                <div class="stat-card">
-                                  <div class="stat-number color-info">${IAC_INFO}</div>
-                                  <div class="stat-label">Informational</div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                      # Container and metadata
+                      printf '<div class="container">\n' >> "$REPORT_FILE"
+                      printf '<div class="meta-grid">\n' >> "$REPORT_FILE"
+                      printf '  <div class="meta-card"><div class="label">Pipeline</div><div class="value">%s</div></div>\n' "$PIPELINE_NAME" >> "$REPORT_FILE"
+                      printf '  <div class="meta-card"><div class="label">Execution ID</div><div class="value">%s</div></div>\n' "$EXECUTION_ID" >> "$REPORT_FILE"
+                      printf '  <div class="meta-card"><div class="label">Image Scanned</div><div class="value">%s</div></div>\n' "$IMAGE_SCANNED" >> "$REPORT_FILE"
+                      printf '  <div class="meta-card"><div class="label">Scanner</div><div class="value">%s</div></div>\n' "$SCANNER_VERSION" >> "$REPORT_FILE"
+                      printf '  <div class="meta-card"><div class="label">Report Generated</div><div class="value">%s</div></div>\n' "$REPORT_DATE" >> "$REPORT_FILE"
+                      printf '</div>\n' >> "$REPORT_FILE"
 
-                          <div class="section">
-                            <div class="section-header">
-                              <span class="section-icon">&#128230;</span>
-                              <h2>Container Image Scan Results</h2>
-                            </div>
-                            <div class="section-body">
-                              <div class="stats-grid">
-                                <div class="stat-card">
-                                  <div class="stat-number color-total">${CONT_TOTAL}</div>
-                                  <div class="stat-label">Total Vulnerabilities</div>
-                                </div>
-                                <div class="stat-card">
-                                  <div class="stat-number color-critical">${CONT_CRITICAL}</div>
-                                  <div class="stat-label">Critical</div>
-                                </div>
-                                <div class="stat-card">
-                                  <div class="stat-number color-high">${CONT_HIGH}</div>
-                                  <div class="stat-label">High</div>
-                                </div>
-                                <div class="stat-card">
-                                  <div class="stat-number color-critical">${SECRETS_DETECTED}</div>
-                                  <div class="stat-label">Secrets Detected</div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                      # IaC Scan Results section
+                      printf '<div class="section">\n' >> "$REPORT_FILE"
+                      printf '  <div class="section-header"><span class="section-icon">&#128196;</span><h2>Infrastructure as Code (IaC) Scan Results</h2></div>\n' >> "$REPORT_FILE"
+                      printf '  <div class="section-body"><div class="stats-grid">\n' >> "$REPORT_FILE"
+                      printf '    <div class="stat-card"><div class="stat-number color-total">%s</div><div class="stat-label">Total Findings</div></div>\n' "$IAC_TOTAL" >> "$REPORT_FILE"
+                      printf '    <div class="stat-card"><div class="stat-number color-critical">%s</div><div class="stat-label">Critical</div></div>\n' "$IAC_CRITICAL" >> "$REPORT_FILE"
+                      printf '    <div class="stat-card"><div class="stat-number color-high">%s</div><div class="stat-label">High</div></div>\n' "$IAC_HIGH" >> "$REPORT_FILE"
+                      printf '    <div class="stat-card"><div class="stat-number color-medium">%s</div><div class="stat-label">Medium</div></div>\n' "$IAC_MEDIUM" >> "$REPORT_FILE"
+                      printf '    <div class="stat-card"><div class="stat-number color-info">%s</div><div class="stat-label">Informational</div></div>\n' "$IAC_INFO" >> "$REPORT_FILE"
+                      printf '  </div></div>\n</div>\n' >> "$REPORT_FILE"
 
-                          <div class="section">
-                            <div class="section-header">
-                              <span class="section-icon">&#9881;</span>
-                              <h2>Build &amp; Deployment Status</h2>
-                            </div>
-                            <div class="section-body">
-                              <div class="status-row">
-                                <span class="status-label">Container Build Status</span>
-                                ${BUILD_BADGE}
-                              </div>
-                              <div class="status-row">
-                                <span class="status-label">Application Dependencies</span>
-                                ${APP_BADGE}
-                              </div>
-                              <div class="status-row">
-                                <span class="status-label">Secrets in Image</span>
-                                ${SECRETS_BADGE}
-                              </div>
-                            </div>
-                          </div>
+                      # Container Scan Results section
+                      printf '<div class="section">\n' >> "$REPORT_FILE"
+                      printf '  <div class="section-header"><span class="section-icon">&#128230;</span><h2>Container Image Scan Results</h2></div>\n' >> "$REPORT_FILE"
+                      printf '  <div class="section-body"><div class="stats-grid">\n' >> "$REPORT_FILE"
+                      printf '    <div class="stat-card"><div class="stat-number color-total">%s</div><div class="stat-label">Total Vulnerabilities</div></div>\n' "$CONT_TOTAL" >> "$REPORT_FILE"
+                      printf '    <div class="stat-card"><div class="stat-number color-critical">%s</div><div class="stat-label">Critical</div></div>\n' "$CONT_CRITICAL" >> "$REPORT_FILE"
+                      printf '    <div class="stat-card"><div class="stat-number color-high">%s</div><div class="stat-label">High</div></div>\n' "$CONT_HIGH" >> "$REPORT_FILE"
+                      printf '    <div class="stat-card"><div class="stat-number color-critical">%s</div><div class="stat-label">Secrets Detected</div></div>\n' "$SECRETS_DETECTED" >> "$REPORT_FILE"
+                      printf '  </div></div>\n</div>\n' >> "$REPORT_FILE"
 
-                          <div class="section">
-                            <div class="section-header">
-                              <span class="section-icon">&#128295;</span>
-                              <h2>Remediation Plan</h2>
-                            </div>
-                            <div class="section-body">
-                              <div class="remediation-box">
-                                ${REMEDIATION_HTML:-<p style="color:#8b949e;">No remediation items identified.</p>}
-                              </div>
-                            </div>
-                          </div>
+                      # Build and Deployment Status section
+                      printf '<div class="section">\n' >> "$REPORT_FILE"
+                      printf '  <div class="section-header"><span class="section-icon">&#9881;</span><h2>Build &amp; Deployment Status</h2></div>\n' >> "$REPORT_FILE"
+                      printf '  <div class="section-body">\n' >> "$REPORT_FILE"
+                      printf '    <div class="status-row"><span class="status-label">Container Build Status</span>%s</div>\n' "$BUILD_BADGE" >> "$REPORT_FILE"
+                      printf '    <div class="status-row"><span class="status-label">Application Dependencies</span>%s</div>\n' "$APP_BADGE" >> "$REPORT_FILE"
+                      printf '    <div class="status-row"><span class="status-label">Secrets in Image</span>%s</div>\n' "$SECRETS_BADGE" >> "$REPORT_FILE"
+                      printf '  </div>\n</div>\n' >> "$REPORT_FILE"
 
-                          <div class="footer">
-                            Generated by <strong>CrowdStrike Falcon Cloud Security</strong> &mdash; ${REPORT_DATE}<br/>
-                            Pipeline: ${PIPELINE_NAME} &bull; Execution: ${EXECUTION_ID}
-                          </div>
+                      # Remediation Plan section
+                      printf '<div class="section">\n' >> "$REPORT_FILE"
+                      printf '  <div class="section-header"><span class="section-icon">&#128295;</span><h2>Remediation Plan</h2></div>\n' >> "$REPORT_FILE"
+                      printf '  <div class="section-body"><div class="remediation-box">%s</div></div>\n' "$REMEDIATION_HTML" >> "$REPORT_FILE"
+                      printf '</div>\n' >> "$REPORT_FILE"
 
-                        </div>
-                      </body>
-                      </html>
-                      HTMLEOF
+                      # Footer
+                      printf '<div class="footer">Generated by <strong>CrowdStrike Falcon Cloud Security</strong> &mdash; %s<br/>Pipeline: %s &bull; Execution: %s</div>\n' "$REPORT_DATE" "$PIPELINE_NAME" "$EXECUTION_ID" >> "$REPORT_FILE"
+                      printf '</div>\n</body>\n</html>\n' >> "$REPORT_FILE"
 
-                      echo "✓ HTML report generated at /harness/scan-results/crowdstrike_security_report.html"
-                      ls -lh /harness/scan-results/crowdstrike_security_report.html
+                      echo "✓ HTML report generated successfully"
+                      echo "Location : $REPORT_FILE"
+                      echo "File size: $(du -sh $REPORT_FILE | cut -f1)"
                   timeout: 5m
               - step:
                   type: Run
@@ -1043,7 +799,8 @@ pipeline:
                     image: alpine
                     shell: Sh
                     command: |-
-                      apk add --no-cache curl
+                      set +x
+                      apk add --no-cache curl > /dev/null 2>&1
 
                       echo "=== Uploading HTML Report to Harness File Store ==="
 
@@ -1056,19 +813,12 @@ pipeline:
 
                       echo "Report file size: $(du -sh $REPORT_PATH | cut -f1)"
 
-                      # Build a unique identifier safe for Harness (alphanumeric + underscore only)
                       EXEC_ID="<+pipeline.executionId>"
                       SAFE_EXEC_ID=$(echo "$EXEC_ID" | tr '-' '_')
                       FILE_IDENTIFIER="cs_security_report_${SAFE_EXEC_ID}"
                       FILE_NAME="crowdstrike_security_report_${EXEC_ID}.html"
 
-                      echo "File identifier: $FILE_IDENTIFIER"
-                      echo "File name: $FILE_NAME"
-
-                      # Attempt to upload to Harness File Store
-                      # First try to create - if it exists already, update it
-                      echo ""
-                      echo "Uploading to Harness File Store..."
+                      echo "Uploading: $FILE_NAME"
 
                       HTTP_STATUS=$(curl -s -o /tmp/upload_response.txt -w "%{http_code}" \
                         -X POST \
@@ -1083,13 +833,10 @@ pipeline:
                         -F "content=@${REPORT_PATH};type=text/html")
 
                       echo "HTTP Status: $HTTP_STATUS"
-                      echo "Response:"
-                      cat /tmp/upload_response.txt
 
                       if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "201" ]; then
                         echo ""
                         echo "✓ Report uploaded successfully to Harness File Store"
-                        echo ""
                         echo "========================================="
                         echo "  HOW TO ACCESS YOUR REPORT"
                         echo "========================================="
@@ -1100,8 +847,7 @@ pipeline:
                         echo "  5. Click the file to download"
                         echo "========================================="
                       elif [ "$HTTP_STATUS" = "409" ]; then
-                        echo ""
-                        echo "File already exists, attempting update via PUT..."
+                        echo "File already exists, attempting update..."
 
                         HTTP_STATUS_PUT=$(curl -s -o /tmp/put_response.txt -w "%{http_code}" \
                           -X PUT \
@@ -1116,26 +862,20 @@ pipeline:
                           -F "content=@${REPORT_PATH};type=text/html")
 
                         echo "PUT HTTP Status: $HTTP_STATUS_PUT"
-                        cat /tmp/put_response.txt
 
                         if [ "$HTTP_STATUS_PUT" = "200" ] || [ "$HTTP_STATUS_PUT" = "201" ]; then
                           echo "✓ Report updated successfully in Harness File Store"
                         else
-                          echo "✗ Update also failed. Falling back to base64 output in logs..."
-                          echo ""
-                          echo "=== BASE64 ENCODED REPORT ==="
-                          echo "Copy the output below and run locally:"
-                          echo "echo '<base64_string>' | base64 -d > crowdstrike_security_report.html"
+                          echo "✗ Update failed. Printing base64 fallback to logs..."
+                          echo "Run locally: echo '<base64>' | base64 -d > crowdstrike_security_report.html"
                           echo "====START===="
                           base64 "$REPORT_PATH"
                           echo "====END===="
                         fi
                       else
                         echo "✗ Upload failed with HTTP status: $HTTP_STATUS"
-                        echo ""
-                        echo "Falling back to base64 output in logs..."
-                        echo "Copy the output below and run locally:"
-                        echo "echo '<base64_string>' | base64 -d > crowdstrike_security_report.html"
+                        echo "Printing base64 fallback to logs..."
+                        echo "Run locally: echo '<base64>' | base64 -d > crowdstrike_security_report.html"
                         echo "====START===="
                         base64 "$REPORT_PATH"
                         echo "====END===="
