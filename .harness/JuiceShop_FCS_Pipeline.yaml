@@ -1043,7 +1043,9 @@ pipeline:
                     image: alpine
                     shell: Sh
                     command: |-
-                      echo "=== Publishing HTML Security Report as Artifact ==="
+                      apk add --no-cache curl
+
+                      echo "=== Uploading HTML Report to Harness File Store ==="
 
                       REPORT_PATH="/harness/scan-results/crowdstrike_security_report.html"
 
@@ -1052,25 +1054,92 @@ pipeline:
                         exit 1
                       fi
 
-                      # Create output directory if it does not exist
-                      mkdir -p /harness/output
+                      echo "Report file size: $(du -sh $REPORT_PATH | cut -f1)"
 
-                      # Copy to /harness/output for reference
-                      cp "$REPORT_PATH" /harness/output/crowdstrike_security_report.html
+                      # Build a unique identifier safe for Harness (alphanumeric + underscore only)
+                      EXEC_ID="<+pipeline.executionId>"
+                      SAFE_EXEC_ID=$(echo "$EXEC_ID" | tr '-' '_')
+                      FILE_IDENTIFIER="cs_security_report_${SAFE_EXEC_ID}"
+                      FILE_NAME="crowdstrike_security_report_${EXEC_ID}.html"
 
-                      # Copy to workspace root - this is the path used by outputArtifacts
-                      cp "$REPORT_PATH" crowdstrike_security_report.html
+                      echo "File identifier: $FILE_IDENTIFIER"
+                      echo "File name: $FILE_NAME"
 
-                      echo "✓ Report copied successfully"
-                      echo "File size: $(du -sh crowdstrike_security_report.html | cut -f1)"
-                      ls -lh crowdstrike_security_report.html
-                      echo "Report is ready for download from the Artifacts tab."
-                    outputVariables: []
-                  timeout: 2m
-                  outputArtifacts:
-                    - name: crowdstrike_security_report
-                      location:
-                        type: Local
-                        spec:
-                          filePaths:
-                            - crowdstrike_security_report.html
+                      # Attempt to upload to Harness File Store
+                      # First try to create - if it exists already, update it
+                      echo ""
+                      echo "Uploading to Harness File Store..."
+
+                      HTTP_STATUS=$(curl -s -o /tmp/upload_response.txt -w "%{http_code}" \
+                        -X POST \
+                        "https://app.harness.io/ng/api/file-store?accountIdentifier=<+account.identifier>&orgIdentifier=<+org.identifier>&projectIdentifier=<+project.identifier>" \
+                        -H "x-api-key: ${HARNESS_API_KEY}" \
+                        -H "Accept: application/json" \
+                        -F "type=FILE" \
+                        -F "mimeType=text/html" \
+                        -F "identifier=${FILE_IDENTIFIER}" \
+                        -F "name=${FILE_NAME}" \
+                        -F "parentIdentifier=Root" \
+                        -F "content=@${REPORT_PATH};type=text/html")
+
+                      echo "HTTP Status: $HTTP_STATUS"
+                      echo "Response:"
+                      cat /tmp/upload_response.txt
+
+                      if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "201" ]; then
+                        echo ""
+                        echo "✓ Report uploaded successfully to Harness File Store"
+                        echo ""
+                        echo "========================================="
+                        echo "  HOW TO ACCESS YOUR REPORT"
+                        echo "========================================="
+                        echo "  1. Go to Harness UI"
+                        echo "  2. Navigate to your Project"
+                        echo "  3. Click: Setup > File Store"
+                        echo "  4. Find file: ${FILE_NAME}"
+                        echo "  5. Click the file to download"
+                        echo "========================================="
+                      elif [ "$HTTP_STATUS" = "409" ]; then
+                        echo ""
+                        echo "File already exists, attempting update via PUT..."
+
+                        HTTP_STATUS_PUT=$(curl -s -o /tmp/put_response.txt -w "%{http_code}" \
+                          -X PUT \
+                          "https://app.harness.io/ng/api/file-store/${FILE_IDENTIFIER}?accountIdentifier=<+account.identifier>&orgIdentifier=<+org.identifier>&projectIdentifier=<+project.identifier>" \
+                          -H "x-api-key: ${HARNESS_API_KEY}" \
+                          -H "Accept: application/json" \
+                          -F "type=FILE" \
+                          -F "mimeType=text/html" \
+                          -F "identifier=${FILE_IDENTIFIER}" \
+                          -F "name=${FILE_NAME}" \
+                          -F "parentIdentifier=Root" \
+                          -F "content=@${REPORT_PATH};type=text/html")
+
+                        echo "PUT HTTP Status: $HTTP_STATUS_PUT"
+                        cat /tmp/put_response.txt
+
+                        if [ "$HTTP_STATUS_PUT" = "200" ] || [ "$HTTP_STATUS_PUT" = "201" ]; then
+                          echo "✓ Report updated successfully in Harness File Store"
+                        else
+                          echo "✗ Update also failed. Falling back to base64 output in logs..."
+                          echo ""
+                          echo "=== BASE64 ENCODED REPORT ==="
+                          echo "Copy the output below and run locally:"
+                          echo "echo '<base64_string>' | base64 -d > crowdstrike_security_report.html"
+                          echo "====START===="
+                          base64 "$REPORT_PATH"
+                          echo "====END===="
+                        fi
+                      else
+                        echo "✗ Upload failed with HTTP status: $HTTP_STATUS"
+                        echo ""
+                        echo "Falling back to base64 output in logs..."
+                        echo "Copy the output below and run locally:"
+                        echo "echo '<base64_string>' | base64 -d > crowdstrike_security_report.html"
+                        echo "====START===="
+                        base64 "$REPORT_PATH"
+                        echo "====END===="
+                      fi
+                    envVariables:
+                      HARNESS_API_KEY: <+secrets.getValue("account.HARNESS_API_KEY")>
+                  timeout: 5m
