@@ -254,11 +254,11 @@ pipeline:
 
                       if [ $? -eq 0 ]; then
                         echo "✓ Container image built successfully"
-                        
+
                         # Push the image
                         echo "Pushing image to Docker Hub..."
                         docker push "${CONTAINER_REPO}:${CONTAINER_TAG}"
-                        
+
                         if [ $? -eq 0 ]; then
                           echo "✓ Image pushed successfully"
                           export BUILD_STATUS="success"
@@ -311,7 +311,7 @@ pipeline:
                         ca-certificates \
                         curl
 
-                      # Install Python packages - ONLY Docker library (no podman)
+                      # Install Python packages
                       echo "Installing Python dependencies..."
                       pip3 install --no-cache-dir --upgrade pip
                       pip3 install --no-cache-dir \
@@ -335,18 +335,17 @@ pipeline:
                           echo "Error: Docker daemon failed to start after 90 seconds"
                           echo "Docker daemon logs:"
                           cat /var/log/dockerd.log || echo "No logs available"
-                          
-                          # Set default values and exit gracefully
+
                           export TOTAL_VULNERABILITIES=0
                           export CRITICAL_VULNERABILITIES=0
                           export HIGH_VULNERABILITIES=0
                           export SECRETS_FOUND="false"
-                          
+
                           echo "0" > /harness/scan-results/total_vulns.txt
                           echo "0" > /harness/scan-results/critical_vulns.txt
                           echo "0" > /harness/scan-results/high_vulns.txt
                           echo "false" > /harness/scan-results/secrets_found.txt
-                          
+
                           exit 0
                         fi
                         sleep 2
@@ -375,12 +374,10 @@ pipeline:
                         git clone https://github.com/crowdstrike/container-image-scan
                       fi
 
-                      # Set environment variables for the scan
                       export FALCON_CLIENT_SECRET="$FALCON_CLIENT_SECRET"
                       export FALCON_CLIENT_ID="$FALCON_CLIENT_ID"
                       export FALCON_CLOUD_REGION="$FALCON_REGION"
 
-                      # Prepare image details
                       IMAGE_REPO="$IMAGE_NAME"
                       IMAGE_TAG_VALUE="$IMAGE_TAG"
 
@@ -400,16 +397,16 @@ pipeline:
                         export CRITICAL_VULNERABILITIES=0
                         export HIGH_VULNERABILITIES=0
                         export SECRETS_FOUND="false"
-                        
+
                         echo "0" > /harness/scan-results/total_vulns.txt
                         echo "0" > /harness/scan-results/critical_vulns.txt
                         echo "0" > /harness/scan-results/high_vulns.txt
                         echo "false" > /harness/scan-results/secrets_found.txt
-                        
+
                         exit 0
                       }
 
-                      # Run the scan (don't fail on non-zero exit)
+                      # Run the scan
                       echo "Running container image scan..."
                       set +e
                       python3 container-image-scan/cs_scanimage.py \
@@ -431,49 +428,43 @@ pipeline:
                       # Process the report
                       if [ -f "report.json" ]; then
                         echo "✓ Scan report generated"
-                        
-                        # Copy report to shared path
+
                         cp report.json /harness/scan-results/
-                        
-                        # Display report
+
                         echo ""
                         echo "=== Scan Report ==="
                         cat report.json | jq '.' || cat report.json
-                        
-                        # Create remediation plan
+
                         echo "# Vulnerability Remediation Plan" > remediation_plan.md
                         echo "" >> remediation_plan.md
                         echo "Generated: $(date)" >> remediation_plan.md
                         echo "Image: ${IMAGE_REPO}:${IMAGE_TAG_VALUE}" >> remediation_plan.md
                         echo "" >> remediation_plan.md
-                        
-                        # Check for vulnerabilities
+
                         if jq -e '.vulnerabilities' report.json > /dev/null 2>&1; then
                           echo ""
                           echo "Vulnerabilities found in the image:"
                           jq -r '.vulnerabilities[] | select(.severity == "HIGH" or .severity == "CRITICAL") | "- \(.severity): \(.cve_id) in \(.package_name) \(.package_version)"' report.json || true
-                          
+
                           echo "## High and Critical Vulnerabilities" >> remediation_plan.md
                           jq -r '.vulnerabilities[] | select(.severity == "HIGH" or .severity == "CRITICAL") | "- **\(.severity)**: \(.cve_id) in \(.package_name) \(.package_version)\n  - Description: \(.description // "N/A")\n  - Remediation: Update to latest version or apply patch\n"' report.json >> remediation_plan.md || true
-                          
-                          # Count vulnerabilities
+
                           TOTAL_VULNS=$(jq '[.vulnerabilities[]] | length' report.json || echo 0)
                           CRITICAL_VULNS=$(jq '[.vulnerabilities[] | select(.severity == "CRITICAL")] | length' report.json || echo 0)
                           HIGH_VULNS=$(jq '[.vulnerabilities[] | select(.severity == "HIGH")] | length' report.json || echo 0)
                           MEDIUM_VULNS=$(jq '[.vulnerabilities[] | select(.severity == "MEDIUM")] | length' report.json || echo 0)
-                          
+
                           echo ""
                           echo "Vulnerability Summary:"
                           echo "  Total: $TOTAL_VULNS"
                           echo "  Critical: $CRITICAL_VULNS"
                           echo "  High: $HIGH_VULNS"
                           echo "  Medium: $MEDIUM_VULNS"
-                          
+
                           export TOTAL_VULNERABILITIES=$TOTAL_VULNS
                           export CRITICAL_VULNERABILITIES=$CRITICAL_VULNS
                           export HIGH_VULNERABILITIES=$HIGH_VULNS
-                          
-                          # Save to shared path
+
                           echo "$TOTAL_VULNS" > /harness/scan-results/total_vulns.txt
                           echo "$CRITICAL_VULNS" > /harness/scan-results/critical_vulns.txt
                           echo "$HIGH_VULNS" > /harness/scan-results/high_vulns.txt
@@ -482,22 +473,21 @@ pipeline:
                           export TOTAL_VULNERABILITIES=0
                           export CRITICAL_VULNERABILITIES=0
                           export HIGH_VULNERABILITIES=0
-                          
+
                           echo "0" > /harness/scan-results/total_vulns.txt
                           echo "0" > /harness/scan-results/critical_vulns.txt
                           echo "0" > /harness/scan-results/high_vulns.txt
                         fi
-                        
-                        # Check for secrets
+
                         if jq -e '.secrets' report.json > /dev/null 2>&1; then
                           echo ""
                           echo "WARNING: Secrets were detected in the image:"
                           jq -r '.secrets[] | "- Secret type: \(.type) in \(.path)"' report.json || true
-                          
+
                           echo "" >> remediation_plan.md
                           echo "## Detected Secrets" >> remediation_plan.md
                           jq -r '.secrets[] | "- Secret type: \(.type) found in \(.path)\n  - Action: Remove this secret and use secure storage methods instead\n"' report.json >> remediation_plan.md || true
-                          
+
                           export SECRETS_FOUND="true"
                           echo "true" > /harness/scan-results/secrets_found.txt
                         else
@@ -505,25 +495,23 @@ pipeline:
                           export SECRETS_FOUND="false"
                           echo "false" > /harness/scan-results/secrets_found.txt
                         fi
-                        
-                        # Copy remediation plan to shared path
+
                         cp remediation_plan.md /harness/scan-results/
-                        
-                        # Display remediation plan
+
                         echo ""
                         echo "=== Remediation Plan ==="
                         cat remediation_plan.md
-                        
+
                       else
                         echo "Error: Scan report not generated"
                         echo "# No security findings to report" > remediation_plan.md
                         cp remediation_plan.md /harness/scan-results/
-                        
+
                         export TOTAL_VULNERABILITIES=0
                         export CRITICAL_VULNERABILITIES=0
                         export HIGH_VULNERABILITIES=0
                         export SECRETS_FOUND="false"
-                        
+
                         echo "0" > /harness/scan-results/total_vulns.txt
                         echo "0" > /harness/scan-results/critical_vulns.txt
                         echo "0" > /harness/scan-results/high_vulns.txt
@@ -573,8 +561,7 @@ pipeline:
 
                       if [ ! -f report.json ]; then
                         echo "No scan report found, checking for saved results..."
-                        
-                        # Try to read from saved files
+
                         if [ -f /harness/scan-results/total_vulns.txt ]; then
                           TOTAL=$(cat /harness/scan-results/total_vulns.txt)
                           CRITICAL=$(cat /harness/scan-results/critical_vulns.txt)
@@ -588,17 +575,14 @@ pipeline:
                           SECRETS_DETECTED="false"
                         fi
                       else
-                        # Display report summary
                         echo "Scan Report Summary:"
                         cat report.json | jq '.' || cat report.json
 
-                        # Parse vulnerabilities
                         TOTAL=$(jq '[.vulnerabilities[]] | length' report.json 2>/dev/null || echo 0)
                         CRITICAL=$(jq '[.vulnerabilities[] | select(.severity == "CRITICAL")] | length' report.json 2>/dev/null || echo 0)
                         HIGH=$(jq '[.vulnerabilities[] | select(.severity == "HIGH")] | length' report.json 2>/dev/null || echo 0)
                         MEDIUM=$(jq '[.vulnerabilities[] | select(.severity == "MEDIUM")] | length' report.json 2>/dev/null || echo 0)
 
-                        # Check for secrets
                         SECRETS=$(jq '[.secrets[]] | length' report.json 2>/dev/null || echo 0)
                         if [ "$SECRETS" -gt 0 ]; then
                           SECRETS_DETECTED="true"
@@ -683,48 +667,36 @@ pipeline:
 
                       echo "=== Generating HTML Security Report ==="
 
-                      # Collect all scan variables
                       PIPELINE_NAME="<+pipeline.name>"
                       EXECUTION_ID="<+pipeline.executionId>"
                       SCANNER_VERSION="mile/cs-fcs:2.2.0"
                       IMAGE_SCANNED="<+pipeline.variables.CS_IMAGE_NAME>:<+pipeline.variables.CS_IMAGE_TAG>"
                       REPORT_DATE=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
 
-                      # IaC findings
                       IAC_TOTAL="<+execution.steps.process_iac_results.output.outputVariables.FINDINGS_COUNT>"
                       IAC_CRITICAL="<+execution.steps.process_iac_results.output.outputVariables.CRITICAL_FINDINGS>"
                       IAC_HIGH="<+execution.steps.process_iac_results.output.outputVariables.HIGH_FINDINGS>"
                       IAC_MEDIUM="<+execution.steps.process_iac_results.output.outputVariables.MEDIUM_FINDINGS>"
                       IAC_INFO="<+execution.steps.process_iac_results.output.outputVariables.LOW_FINDINGS>"
 
-                      # Container scan findings
                       CONT_TOTAL="<+execution.steps.process_container_results.output.outputVariables.VULNERABILITIES>"
                       CONT_CRITICAL="<+execution.steps.process_container_results.output.outputVariables.CRITICAL_VULNS>"
                       CONT_HIGH="<+execution.steps.process_container_results.output.outputVariables.HIGH_VULNS>"
                       SECRETS_DETECTED="<+execution.steps.process_container_results.output.outputVariables.SECRETS_DETECTED>"
 
-                      # Build & App status
                       BUILD_STATUS="<+execution.steps.build_container_image_docker.output.outputVariables.BUILD_STATUS>"
                       APP_READY="<+execution.steps.verify_app_dependencies.output.outputVariables.APP_READY>"
-
-                      # Helper: severity badge color
-                      iac_critical_color="#dc3545"
-                      iac_high_color="#fd7e14"
-                      iac_medium_color="#ffc107"
-                      iac_info_color="#0dcaf0"
-                      cont_critical_color="#dc3545"
-                      cont_high_color="#fd7e14"
 
                       # Determine overall risk level
                       OVERALL_RISK="LOW"
                       RISK_COLOR="#198754"
-                      if [ "$IAC_CRITICAL" -gt 0 ] || [ "$CONT_CRITICAL" -gt 0 ] 2>/dev/null; then
+                      if [ "${IAC_CRITICAL:-0}" -gt 0 ] || [ "${CONT_CRITICAL:-0}" -gt 0 ] 2>/dev/null; then
                         OVERALL_RISK="CRITICAL"
                         RISK_COLOR="#dc3545"
-                      elif [ "$IAC_HIGH" -gt 0 ] || [ "$CONT_HIGH" -gt 0 ] 2>/dev/null; then
+                      elif [ "${IAC_HIGH:-0}" -gt 0 ] || [ "${CONT_HIGH:-0}" -gt 0 ] 2>/dev/null; then
                         OVERALL_RISK="HIGH"
                         RISK_COLOR="#fd7e14"
-                      elif [ "$IAC_MEDIUM" -gt 0 ] 2>/dev/null; then
+                      elif [ "${IAC_MEDIUM:-0}" -gt 0 ] 2>/dev/null; then
                         OVERALL_RISK="MEDIUM"
                         RISK_COLOR="#ffc107"
                       fi
@@ -764,7 +736,6 @@ pipeline:
 
                       mkdir -p /harness/scan-results
 
-                      # Write the HTML report
                       cat > /harness/scan-results/crowdstrike_security_report.html << HTMLEOF
                       <!DOCTYPE html>
                       <html lang="en">
@@ -936,7 +907,6 @@ pipeline:
 
                         <div class="container">
 
-                          <!-- Pipeline Metadata -->
                           <div class="meta-grid">
                             <div class="meta-card">
                               <div class="label">Pipeline</div>
@@ -960,7 +930,6 @@ pipeline:
                             </div>
                           </div>
 
-                          <!-- IaC Scan Results -->
                           <div class="section">
                             <div class="section-header">
                               <span class="section-icon">&#128196;</span>
@@ -992,7 +961,6 @@ pipeline:
                             </div>
                           </div>
 
-                          <!-- Container Image Scan Results -->
                           <div class="section">
                             <div class="section-header">
                               <span class="section-icon">&#128230;</span>
@@ -1013,14 +981,13 @@ pipeline:
                                   <div class="stat-label">High</div>
                                 </div>
                                 <div class="stat-card">
-                                  <div class="stat-number ${SECRETS_DETECTED:+color-critical}">${SECRETS_DETECTED}</div>
+                                  <div class="stat-number color-critical">${SECRETS_DETECTED}</div>
                                   <div class="stat-label">Secrets Detected</div>
                                 </div>
                               </div>
                             </div>
                           </div>
 
-                          <!-- Build & Deployment Status -->
                           <div class="section">
                             <div class="section-header">
                               <span class="section-icon">&#9881;</span>
@@ -1042,7 +1009,6 @@ pipeline:
                             </div>
                           </div>
 
-                          <!-- Remediation Plan -->
                           <div class="section">
                             <div class="section-header">
                               <span class="section-icon">&#128295;</span>
@@ -1086,22 +1052,25 @@ pipeline:
                         exit 1
                       fi
 
-                      # Copy report to the workspace so Harness artifact upload can find it
+                      # Create output directory if it does not exist
+                      mkdir -p /harness/output
+
+                      # Copy to /harness/output for reference
                       cp "$REPORT_PATH" /harness/output/crowdstrike_security_report.html
 
-                      echo "✓ Report copied to artifact output directory"
-                      echo "File size: $(du -sh /harness/output/crowdstrike_security_report.html | cut -f1)"
+                      # Copy to workspace root - this is the path used by outputArtifacts
+                      cp "$REPORT_PATH" crowdstrike_security_report.html
+
+                      echo "✓ Report copied successfully"
+                      echo "File size: $(du -sh crowdstrike_security_report.html | cut -f1)"
+                      ls -lh crowdstrike_security_report.html
                       echo "Report is ready for download from the Artifacts tab."
+                    outputVariables: []
                   timeout: 2m
-                  reports:
-                    type: JUnit
-                  artifacts:
-                    primary:
-                      type: Gcs
                   outputArtifacts:
                     - name: crowdstrike_security_report
                       location:
                         type: Local
                         spec:
                           filePaths:
-                            - /harness/output/crowdstrike_security_report.html
+                            - crowdstrike_security_report.html
